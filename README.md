@@ -1,12 +1,18 @@
 # PrunePlex
 
-PrunePlex helps you prune a Plex movie collection. It scans your Plex movie
-libraries, shows which movies exist in which resolutions, and lets you reclaim
-disk space by deleting the copies you don't need through Radarr, with ratings and
-file sizes alongside to help you decide.
+PrunePlex is for Plex libraries where **you deliberately keep more than one
+resolution of some titles** (say a 4K copy *and* an HD copy so every device can
+play them) but where that adds up to a lot of disk space and you want to claw
+some of it back.
+
+It finds the titles that exist in multiple resolutions, shows each copy's size
+next to ratings, and lets you remove the copies you decide aren't worth keeping,
+through Radarr (movies) and Sonarr (TV). Keep both versions of the titles you
+love; drop the 4K or the HD copy of the ones you don't. It is a tool for trimming
+a multi-resolution collection, not for wiping out titles wholesale.
 
 It is built for the common setup of keeping separate **4K** and **HD** libraries,
-each managed by its own Radarr instance.
+each managed by its own Radarr or Sonarr instance.
 
 ## What it does
 
@@ -36,22 +42,57 @@ each managed by its own Radarr instance.
    Radarr instance with its size on disk.
 4. **Narrow down** (Multiple resolutions tab). Filter to the top 20% largest 4K
    or HD files, the 20% lowest-rated movies, movies where the HD file is larger
-   than the 4K one, or where the 4K file is within 10% of the HD size. The
-   largest 4K files are highlighted automatically.
+   than the 4K one, or where the 4K file is within 10% of the HD size. Pick a
+   filter and click Apply; Clear shows everything again.
 5. **Prune.** Each matched row has a **Delete 4K** / **Delete HD** button. It
    asks for confirmation, then tells that Radarr instance to remove the movie
    **and delete its files from disk**. This cannot be undone from PrunePlex.
 
+### Ways to trim
+
+The filters on the **Multiple resolutions** tab are aimed at the usual questions
+about duplicates:
+
+- *Is the 4K copy worth its space?* Apply **Top 20% 4K file size** to see the
+  biggest 4K files, or **20% lowest rated** to see what you like least, and
+  **Delete 4K** where the cost outweighs the quality gain.
+- *Did I keep an HD copy that adds nothing?* **4K within 10% of HD size** and
+  **HD larger than 4K** flag cases where the HD copy is not saving anything, so
+  you can **Delete HD** and keep the better 4K file.
+- *Which HD copies are the heavy ones?* **Top 20% HD file size** does the same
+  for the HD side.
+
+Every delete is individual and confirmed, and each title keeps whichever copy you
+leave alone.
+
+## TV shows
+
+The **TV Shows** page works the same way, with a *show* as the unit instead of a
+movie. Plex reports resolutions per episode, so PrunePlex combines them across
+every episode of a show and sorts shows into the same four tabs: a show with
+both 4K and HD episodes lands in **Multiple resolutions**; **Only 4K** and **Only
+HD** need every episode at a single resolution. Resolution tags show how many
+episodes have each one (e.g. `1080 · 24 eps`), and an icon left of each poster
+shows whether the series is still airing according to Sonarr: ▶ continuing, ■
+ended, ⏸ unknown (no Sonarr match). Next to each Sonarr size, a small ring
+shows how complete the collection is: the percentage of the series' monitored,
+aired episodes that Sonarr has on disk (100% means every episode). Shows are
+matched to Sonarr by
+TVDB, TMDB or IMDb ID, falling back to an exact title and year. If a show has no
+match, **Find match** works as it does for movies (choices are saved in
+`sonarr-matches.json`). **Delete** removes the whole series and all its episode
+files via Sonarr.
+
 PrunePlex never deletes anything itself or talks to Plex to delete: all
-deletions go through Radarr, and only after you confirm.
+deletions go through Radarr or Sonarr, and only after you confirm.
 
 ## Setup
 
 1. Run PrunePlex (see [Running](#running)) and open http://localhost:8081.
 2. Go to **Settings** and enter the URL and API key for your 4K and/or HD Radarr
-   instance. Without these, scanning still works but the Radarr columns show
-   "Configure" and nothing can be deleted.
-3. Back on **Overview**, click **Connect Plex**, choose your server, pick a
+   (movies) and Sonarr (TV) instances. Without these, scanning still works but
+   the Radarr/Sonarr columns show "Configure" and nothing can be deleted.
+3. Back on **Movies** (or **TV Shows**), click **Connect Plex**, choose your server, pick a
    library and click **Analyze movies**.
 
 Movies are matched to Radarr automatically by TMDB/IMDb ID, falling back to an
@@ -68,7 +109,8 @@ choices are saved in `radarr-matches.json` and reused on later scans.
   delete movies through your Radarr. Run it on a trusted network or behind a
   reverse proxy or firewall that restricts access.
 - Your Plex token and Radarr API keys are stored in plaintext JSON
-  (`plex.json`, `radarr.json`; manual matches go in `radarr-matches.json`) in the config directory with owner-only
+  (`plex.json`, `radarr.json`, `sonarr.json`; manual matches go in
+  `radarr-matches.json` and `sonarr-matches.json`) in the config directory with owner-only
   permissions: `%AppData%\pruneplex` on Windows,
   `~/.config/pruneplex` on Linux, `~/Library/Application Support/pruneplex` on
   macOS. Set `PRUNEPLEX_CONFIG` to the path of `radarr.json` to move them
