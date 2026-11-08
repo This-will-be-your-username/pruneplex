@@ -1,0 +1,18 @@
+# Cached credentials / local settings (Radarr API key etc.)
+radarr.json
+.radarr-settings-*
+space-analyzer/
+.env
+.env.*
+*.local.json
+
+# Build output
+/server
+/server.exe
+*.exe
+/bin/
+/dist/
+
+# Dependencies / tooling
+node_modules/
+.vscode/

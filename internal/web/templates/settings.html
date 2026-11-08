@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#171717">
+    <title>Settings | PrunePlex</title>
+    <link rel="stylesheet" href="/assets/app.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <a class="brand" href="/" aria-label="PrunePlex home">
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span class="brand-name">Prune<span class="brand-light">Plex</span></span>
+          </a>
+          <nav class="main-nav" aria-label="Main navigation">
+            <a class="nav-button" href="/">
+              <span class="nav-icon overview-icon" aria-hidden="true"></span>Overview
+            </a>
+            <a class="nav-button active" href="/settings" aria-current="page">
+              <span class="nav-icon settings-icon" aria-hidden="true"></span>Settings
+            </a>
+          </nav>
+        </div>
+        <div class="topbar-meta">
+          <span class="connection-dot" aria-hidden="true"></span>
+          <span>Local instance</span>
+          <span class="server-dot"></span>LOCAL SERVER
+        </div>
+      </header>
+
+      <main class="main-content">
+        <section class="settings-section" aria-labelledby="radarr-title">
+          <div class="settings-heading">
+            <div>
+              <div class="eyebrow muted">LIBRARY MATCHING</div>
+              <h2 id="radarr-title">Radarr instances</h2>
+            </div>
+            <span class="settings-message" id="settings-message" role="status" aria-live="polite"></span>
+          </div>
+
+          <form id="radarr-settings-form">
+            <div class="settings-grid">
+              <fieldset class="settings-instance">
+                <legend>4K Radarr</legend>
+                <p class="instance-state" id="radarr-4k-state">Not configured</p>
+                <label for="radarr-4k-url">Server URL</label>
+                <input id="radarr-4k-url" type="url" placeholder="http://radarr-4k:7878" autocomplete="url">
+                <label for="radarr-4k-key">API key</label>
+                <input id="radarr-4k-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key">
+                <div class="instance-actions">
+                  <button class="button button-secondary" type="button" data-test="4k">Test connection</button>
+                  <button class="button button-danger" type="button" data-clear="4k" hidden>Clear</button>
+                </div>
+              </fieldset>
+
+              <fieldset class="settings-instance">
+                <legend>HD Radarr</legend>
+                <p class="instance-state" id="radarr-hd-state">Not configured</p>
+                <label for="radarr-hd-url">Server URL</label>
+                <input id="radarr-hd-url" type="url" placeholder="http://radarr-hd:7878" autocomplete="url">
+                <label for="radarr-hd-key">API key</label>
+                <input id="radarr-hd-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key">
+                <div class="instance-actions">
+                  <button class="button button-secondary" type="button" data-test="hd">Test connection</button>
+                  <button class="button button-danger" type="button" data-clear="hd" hidden>Clear</button>
+                </div>
+              </fieldset>
+            </div>
+
+            <div class="settings-save-row">
+              <p>API keys are stored locally with owner-only file permissions.</p>
+              <button class="button button-primary" id="save-radarr-settings" type="submit">Save settings</button>
+            </div>
+          </form>
+        </section>
+
+        <footer class="page-footer"><span>PRUNEPLEX</span><span>BUILT FOR A CLEARER VIEW</span></footer>
+      </main>
+    </div>
+    <script src="/assets/settings.js" defer></script>
+  </body>
+</html>

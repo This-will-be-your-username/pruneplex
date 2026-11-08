@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#171717">
+    <title>PrunePlex</title>
+    <link rel="stylesheet" href="/assets/app.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <a class="brand" href="/" aria-label="PrunePlex home">
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span class="brand-name">Prune<span class="brand-light">Plex</span></span>
+          </a>
+          <nav class="main-nav" aria-label="Main navigation">
+            <a class="nav-button active" href="/" aria-current="page">
+              <span class="nav-icon overview-icon" aria-hidden="true"></span>Overview
+            </a>
+            <a class="nav-button" href="/settings">
+              <span class="nav-icon settings-icon" aria-hidden="true"></span>Settings
+            </a>
+          </nav>
+        </div>
+        <div class="topbar-meta">
+          <span class="connection-dot" aria-hidden="true"></span>
+          <span>Local instance</span>
+          <span class="server-dot"></span>LOCAL SERVER
+        </div>
+      </header>
+
+      <main class="main-content">
+        <section class="status-section" aria-labelledby="status-title">
+          <div class="section-heading">
+            <div>
+              <div class="eyebrow muted">PLEX LIBRARY</div>
+              <h2 id="status-title">Your movie library, at a glance.</h2>
+            </div>
+            <div class="plex-actions">
+              <button class="button button-secondary" id="plex-connect" type="button">Connect Plex</button>
+              <button class="button button-secondary" id="plex-disconnect" type="button" hidden>Disconnect</button>
+              <button class="button button-primary" id="plex-analyze" type="button" disabled>Analyze movies</button>
+            </div>
+          </div>
+          <p class="plex-message" id="plex-message" role="status" aria-live="polite">Connect your Plex account to choose a server and scan its movie libraries.</p>
+          <div class="server-picker" id="plex-server-picker" hidden>
+            <label for="plex-server-select">Plex server</label>
+            <select id="plex-server-select"></select>
+            <button class="button button-primary" id="plex-server-connect" type="button">Use this server</button>
+          </div>
+          <div class="results" id="plex-results" hidden>
+            <div class="results-heading">
+              <div>
+                <h3>Movies with multiple resolutions</h3>
+                <span class="highlight-info" id="plex-highlight-info" hidden></span>
+              </div>
+              <div class="results-heading-actions">
+                <div class="filter-container" id="filter-container" hidden>
+                  <select id="filter-select" class="button button-secondary button-sm">
+                    <option value="" disabled selected>Select filter</option>
+                    <option value="top20_4k">Top 20% 4K file size</option>
+                    <option value="top20_hd">Top 20% HD file size</option>
+                    <option value="lowest_20_rated">20% lowest rated movies</option>
+                    <option value="hd_gt_fourk">HD larger than 4K</option>
+                    <option value="fourk_within_10_hd">4K within 10% of HD size</option>
+                  </select>
+                  <button class="button button-primary button-sm" id="apply-filter-btn" type="button">Apply</button>
+                  <button class="button button-secondary button-sm" id="clear-filter-btn" type="button">Clear</button>
+                </div>
+                <span id="plex-result-count"></span>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th scope="col">Movie</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">4K Radarr</th><th scope="col">HD Radarr</th></tr></thead>
+                <tbody id="plex-results-body"></tbody>
+              </table>
+            </div>
+            <p class="empty-results" id="plex-empty-results" hidden>No movies with both 4K and another resolution were found.</p>
+          </div>
+        </section>
+
+        <footer class="page-footer"><span>PRUNEPLEX</span><span>BUILT FOR A CLEARER VIEW</span></footer>
+      </main>
+    </div>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>
