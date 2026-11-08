@@ -411,6 +411,28 @@ func (c *plexConnector) analyze(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadGateway, "Could not read the HD Radarr library")
 		return
 	}
+	manual := c.radarr.matches()
+	// findMatch prefers a pairing the user chose by hand, then automatic ID/title matching.
+	findMatch := func(quality string, movie plex.Movie, library []radarr.Movie) *radarrMovieMatch {
+		var found radarr.Movie
+		ok := false
+		if id, saved := manual.get(quality, plexMatchKey(movie.Title, movie.Year)); saved {
+			for _, candidate := range library {
+				if candidate.ID == id {
+					found, ok = candidate, true
+					break
+				}
+			}
+		}
+		if !ok {
+			identity := radarr.Identity{Title: movie.Title, Year: movie.Year, TMDBID: movie.TMDBID, IMDBID: movie.IMDBID}
+			found, ok = radarr.FindMovie(identity, library)
+		}
+		if !ok {
+			return nil
+		}
+		return &radarrMovieMatch{ID: found.ID, Title: found.Title, Year: found.Year, SizeBytes: found.SizeOnDisk}
+	}
 	enrich := func(movies []plex.Movie) []analyzedMovie {
 		out := make([]analyzedMovie, 0, len(movies))
 		for _, movie := range movies {
@@ -419,13 +441,8 @@ func (c *plexConnector) analyze(w http.ResponseWriter, r *http.Request) {
 				Radarr4KConfigured: settings.FourK.APIKey != "",
 				RadarrHDConfigured: settings.HD.APIKey != "",
 			}
-			identity := radarr.Identity{Title: movie.Title, Year: movie.Year, TMDBID: movie.TMDBID, IMDBID: movie.IMDBID}
-			if radarrMovie, ok := radarr.FindMovie(identity, fourKMovies); ok {
-				match.Radarr4K = &radarrMovieMatch{ID: radarrMovie.ID, Title: radarrMovie.Title, Year: radarrMovie.Year, SizeBytes: radarrMovie.SizeOnDisk}
-			}
-			if radarrMovie, ok := radarr.FindMovie(identity, hdMovies); ok {
-				match.RadarrHD = &radarrMovieMatch{ID: radarrMovie.ID, Title: radarrMovie.Title, Year: radarrMovie.Year, SizeBytes: radarrMovie.SizeOnDisk}
-			}
+			match.Radarr4K = findMatch("4k", movie, fourKMovies)
+			match.RadarrHD = findMatch("hd", movie, hdMovies)
 			out = append(out, match)
 		}
 		return out

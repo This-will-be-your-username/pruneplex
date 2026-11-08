@@ -594,8 +594,24 @@ function createRadarrCell(movie, quality) {
     return cell;
   }
   if (!match) {
-    cell.textContent = 'No match';
-    cell.className = 'radarr-no-match';
+    cell.classList.add('radarr-no-match');
+    const label = document.createElement('span');
+    label.textContent = 'No match';
+    const findButton = document.createElement('button');
+    findButton.type = 'button';
+    findButton.className = 'button button-secondary button-sm find-match-button';
+    findButton.textContent = 'Find match';
+    const picker = document.createElement('div');
+    picker.className = 'match-picker';
+    picker.hidden = true;
+    findButton.addEventListener('click', () => {
+      picker.hidden = !picker.hidden;
+      if (!picker.hidden && !picker.dataset.loaded) {
+        picker.dataset.loaded = '1';
+        buildMatchPicker(picker, movie, quality, cell);
+      }
+    });
+    cell.append(label, findButton, picker);
     return cell;
   }
 
@@ -643,6 +659,93 @@ function createRadarrCell(movie, quality) {
   wrapper.append(matchTitle, matchSize, button);
   cell.append(wrapper);
   return cell;
+}
+
+// --- Manual Radarr matching ---
+
+/**
+ * Fills `picker` with a shortlist of Radarr movies that might be `movie`, plus a
+ * search box to refine it. Choosing one saves the pairing and re-renders `cell`.
+ */
+function buildMatchPicker(picker, movie, quality, cell) {
+  const form = document.createElement('div');
+  form.className = 'match-search';
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.placeholder = 'Search Radarr by title';
+  input.setAttribute('aria-label', 'Search Radarr by title');
+  const searchButton = document.createElement('button');
+  searchButton.type = 'button';
+  searchButton.className = 'button button-secondary button-sm';
+  searchButton.textContent = 'Search';
+  form.append(input, searchButton);
+
+  const status = document.createElement('p');
+  status.className = 'match-status';
+  const list = document.createElement('ul');
+  list.className = 'match-candidates';
+  picker.append(form, status, list);
+
+  async function load(query) {
+    status.textContent = 'Searching…';
+    list.replaceChildren();
+    try {
+      const { candidates } = await request('/api/radarr/candidates', {
+        method: 'POST',
+        body: JSON.stringify({ quality, title: movie.title, year: movie.year || 0, query }),
+      });
+      status.textContent = candidates.length
+        ? 'Pick the matching movie:'
+        : 'No similar movies in Radarr. Try a different search.';
+      for (const candidate of candidates) {
+        const item = document.createElement('li');
+        const choose = document.createElement('button');
+        choose.type = 'button';
+        choose.className = 'match-candidate';
+        const title = document.createElement('span');
+        title.className = 'match-candidate-title';
+        title.textContent = candidate.year ? `${candidate.title} (${candidate.year})` : candidate.title;
+        const detail = document.createElement('span');
+        detail.className = 'match-candidate-detail';
+        const ids = [candidate.tmdbId ? `TMDB ${candidate.tmdbId}` : '', candidate.imdbId || ''].filter(Boolean);
+        detail.textContent = [formatFileSize(candidate.sizeBytes), ...ids].join(' · ');
+        choose.append(title, detail);
+        choose.addEventListener('click', () => select(candidate, choose));
+        item.append(choose);
+        list.append(item);
+      }
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  }
+
+  async function select(candidate, button) {
+    button.disabled = true;
+    try {
+      await request('/api/radarr/match', {
+        method: 'POST',
+        body: JSON.stringify({ quality, title: movie.title, year: movie.year || 0, movieId: candidate.id }),
+      });
+      const saved = { id: candidate.id, title: candidate.title, year: candidate.year, sizeBytes: candidate.sizeBytes };
+      if (quality === '4k') movie.radarr4k = saved; else movie.radarrHd = saved;
+      const row = cell.closest('tr');
+      cell.replaceWith(createRadarrCell(movie, quality));
+      if (row) {
+        const size = quality === '4k' ? get4KSize(movie) : getHDSize(movie);
+        if (size > 0) row.dataset[quality === '4k' ? 'fourKSize' : 'hdSize'] = String(size);
+      }
+    } catch (error) {
+      button.disabled = false;
+      status.textContent = error.message;
+    }
+  }
+
+  const search = () => load(input.value.trim());
+  searchButton.addEventListener('click', search);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') search();
+  });
+  load('');
 }
 
 // --- Size helpers ---

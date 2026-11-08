@@ -20,6 +20,9 @@ type radarrSettingsStore struct {
 	path    string
 	value   radarr.Settings
 	loadErr error
+
+	matchOnce  sync.Once
+	matchStore *radarrMatchStore
 }
 
 type radarrHandlers struct {
@@ -120,6 +123,8 @@ func (h *radarrHandlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/settings/radarr/test", h.testConnection)
 	mux.HandleFunc("DELETE /api/settings/radarr/{quality}", h.clearInstance)
 	mux.HandleFunc("POST /api/radarr/movie/remove", h.removeMovie)
+	mux.HandleFunc("POST /api/radarr/candidates", h.candidates)
+	mux.HandleFunc("POST /api/radarr/match", h.saveMatch)
 }
 
 func settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -279,4 +284,95 @@ func (h *radarrHandlers) removeMovie(w http.ResponseWriter, r *http.Request) {
 
 func (h *radarrHandlers) listMovies(ctx context.Context, instance radarr.Instance) ([]radarr.Movie, error) {
 	return radarr.NewClient(h.client, instance).Movies(ctx)
+}
+
+type radarrCandidate struct {
+	ID        int    `json:"id"`
+	Title     string `json:"title"`
+	Year      int    `json:"year"`
+	TMDBID    int    `json:"tmdbId,omitempty"`
+	IMDBID    string `json:"imdbId,omitempty"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
+
+func newRadarrCandidate(m radarr.Movie) radarrCandidate {
+	return radarrCandidate{ID: m.ID, Title: m.Title, Year: m.Year, TMDBID: m.TMDBID, IMDBID: m.IMDBID, SizeBytes: m.SizeOnDisk}
+}
+
+func (h *radarrHandlers) instanceMovies(w http.ResponseWriter, r *http.Request, quality string) []radarr.Movie {
+	settings, err := h.store.snapshot()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "Could not read Radarr settings")
+		return nil
+	}
+	instance, err := configuredInstance(settings, quality)
+	if err != nil || instance.APIKey == "" {
+		writeAPIError(w, http.StatusBadRequest, "That Radarr instance is not configured")
+		return nil
+	}
+	movies, err := h.listMovies(r.Context(), instance)
+	if err != nil {
+		writeAPIError(w, http.StatusBadGateway, "Could not read the Radarr library")
+		return nil
+	}
+	return movies
+}
+
+// candidates returns a shortlist of Radarr movies that might be the given Plex
+// movie. If query is set it replaces the title, so users can refine the search.
+func (h *radarrHandlers) candidates(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Quality string `json:"quality"`
+		Title   string `json:"title"`
+		Year    int    `json:"year"`
+		Query   string `json:"query"`
+	}
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "Invalid candidate request")
+		return
+	}
+	movies := h.instanceMovies(w, r, input.Quality)
+	if movies == nil {
+		return
+	}
+	title, year := input.Title, input.Year
+	if strings.TrimSpace(input.Query) != "" {
+		title, year = input.Query, 0
+	}
+	suggestions := radarr.Suggest(radarr.Identity{Title: title, Year: year}, movies, 8)
+	out := make([]radarrCandidate, 0, len(suggestions))
+	for _, m := range suggestions {
+		out = append(out, newRadarrCandidate(m))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"candidates": out})
+}
+
+// saveMatch records that a Plex movie corresponds to a Radarr movie.
+func (h *radarrHandlers) saveMatch(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Quality string `json:"quality"`
+		Title   string `json:"title"`
+		Year    int    `json:"year"`
+		MovieID int    `json:"movieId"`
+	}
+	if err := decodeJSON(w, r, &input); err != nil || input.MovieID <= 0 || strings.TrimSpace(input.Title) == "" {
+		writeAPIError(w, http.StatusBadRequest, "Invalid match")
+		return
+	}
+	movies := h.instanceMovies(w, r, input.Quality)
+	if movies == nil {
+		return
+	}
+	for _, m := range movies {
+		if m.ID != input.MovieID {
+			continue
+		}
+		if err := h.store.matches().set(input.Quality, plexMatchKey(input.Title, input.Year), m.ID); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "Could not save the match")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"match": newRadarrCandidate(m)})
+		return
+	}
+	writeAPIError(w, http.StatusBadRequest, "That movie is not in the Radarr library")
 }
