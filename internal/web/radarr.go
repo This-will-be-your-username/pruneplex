@@ -33,6 +33,7 @@ type radarrHandlers struct {
 type radarrInstanceStatus struct {
 	URL        string `json:"url"`
 	Configured bool   `json:"configured"`
+	RootFolder string `json:"rootFolder"`
 }
 
 func newRadarrSettingsStore() *radarrSettingsStore {
@@ -121,8 +122,10 @@ func (h *radarrHandlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/settings/radarr", h.getSettings)
 	mux.HandleFunc("PUT /api/settings/radarr", h.saveSettings)
 	mux.HandleFunc("POST /api/settings/radarr/test", h.testConnection)
+	mux.HandleFunc("GET /api/settings/radarr/rootfolders", h.rootFolders)
 	mux.HandleFunc("DELETE /api/settings/radarr/{quality}", h.clearInstance)
 	mux.HandleFunc("POST /api/radarr/movie/remove", h.removeMovie)
+	mux.HandleFunc("GET /api/radarr/storage", h.storage)
 	mux.HandleFunc("POST /api/radarr/candidates", h.candidates)
 	mux.HandleFunc("POST /api/radarr/match", h.saveMatch)
 }
@@ -150,8 +153,8 @@ func (h *radarrHandlers) getSettings(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]radarrInstanceStatus{
-		"fourK": {URL: settings.FourK.URL, Configured: settings.FourK.APIKey != ""},
-		"hd":    {URL: settings.HD.URL, Configured: settings.HD.APIKey != ""},
+		"fourK": {URL: settings.FourK.URL, Configured: settings.FourK.APIKey != "", RootFolder: settings.FourK.RootFolder},
+		"hd":    {URL: settings.HD.URL, Configured: settings.HD.APIKey != "", RootFolder: settings.HD.RootFolder},
 	})
 }
 
@@ -190,6 +193,7 @@ func mergeSettings(input, current radarr.Settings) (radarr.Settings, error) {
 }
 
 func mergeInstance(input, current radarr.Instance) radarr.Instance {
+	input.RootFolder = strings.TrimSpace(input.RootFolder)
 	input.URL = strings.TrimSpace(input.URL)
 	input.APIKey = strings.TrimSpace(input.APIKey)
 	if input.URL == "" {

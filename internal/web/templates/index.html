@@ -35,7 +35,10 @@
           <div class="section-heading">
             <div>
               <div class="eyebrow muted">PLEX LIBRARY</div>
-              <h2 id="status-title">{{.Headline}}</h2>
+              <div class="title-row">
+                <h2 id="status-title">{{.Headline}}</h2>
+                <div class="storage-summary" id="storage-summary" aria-live="polite"></div>
+              </div>
             </div>
             <div class="plex-actions">
               <button class="button button-secondary" id="plex-connect" type="button">Connect Plex</button>

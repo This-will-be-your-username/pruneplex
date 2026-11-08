@@ -48,6 +48,7 @@ const MEDIA = isTV
       analyzeURL: '/api/plex/analyze-tv',
       restoreURL: '/api/plex/analysis-tv',
       analyzedKey: 'pruneplex.analyzed.tv',
+      storageURL: '/api/sonarr/storage',
       removeURL: '/api/sonarr/series/remove',
       removeBody: (quality, id) => ({ quality, seriesId: id }),
       removeWhat: 'series and all of its episode files',
@@ -66,6 +67,7 @@ const MEDIA = isTV
       analyzeURL: '/api/plex/analyze',
       restoreURL: '/api/plex/analysis',
       analyzedKey: 'pruneplex.analyzed.movies',
+      storageURL: '/api/radarr/storage',
       removeURL: '/api/radarr/movie/remove',
       removeBody: (quality, id) => ({ quality, movieId: id }),
       removeWhat: 'movie files',
@@ -167,6 +169,42 @@ function showConnected(serverName) {
   if (analyzeButton) analyzeButton.disabled = false;
   showMessage(`Connected to ${serverName}.`, 'success');
   loadLibraries();
+}
+
+// --- Disk usage as reported by Radarr / Sonarr ---
+
+const storageSummary = doc?.querySelector('#storage-summary');
+
+/**
+ * Next to the library name, show for each configured Radarr/Sonarr instance how
+ * much space its media uses and how much free space its disks report.
+ */
+async function loadStorage() {
+  if (!storageSummary) return;
+  try {
+    const data = await request(MEDIA.storageURL);
+    storageSummary.replaceChildren();
+    for (const [key, label] of [['fourK', '4K'], ['hd', 'HD']]) {
+      const info = data[key];
+      if (!info?.configured) continue;
+      const chip = document.createElement('span');
+      chip.className = 'storage-chip';
+      if (info.folder) chip.title = `Free space of ${info.folder}`;
+      const name = document.createElement('b');
+      name.textContent = `${label} ${MEDIA.arr}`;
+      const figures = document.createElement('span');
+      if (info.error) {
+        figures.textContent = 'unavailable';
+        chip.classList.add('is-error');
+      } else {
+        figures.textContent = `${formatFileSize(info.usedBytes)} used · ${formatFileSize(info.freeBytes)} free`;
+      }
+      chip.append(name, figures);
+      storageSummary.append(chip);
+    }
+  } catch {
+    storageSummary.replaceChildren();
+  }
 }
 
 
@@ -762,6 +800,7 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
         body: JSON.stringify(MEDIA.removeBody(quality, match.id)),
       });
       matchTitle.textContent = 'Removed';
+      loadStorage(); // freed space shows up in the header
       ring?.remove();
       button.textContent = 'Removed';
       if (is4KInstance) {
@@ -1216,4 +1255,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 if (doc) {
   refreshStatus().catch((error) => showMessage(error.message, 'error'));
+  loadStorage();
 }

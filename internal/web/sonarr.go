@@ -25,8 +25,10 @@ func (h *sonarrHandlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/settings/sonarr", h.getSettings)
 	mux.HandleFunc("PUT /api/settings/sonarr", h.saveSettings)
 	mux.HandleFunc("POST /api/settings/sonarr/test", h.testConnection)
+	mux.HandleFunc("GET /api/settings/sonarr/rootfolders", h.rootFolders)
 	mux.HandleFunc("DELETE /api/settings/sonarr/{quality}", h.clearInstance)
 	mux.HandleFunc("POST /api/sonarr/series/remove", h.removeSeries)
+	mux.HandleFunc("GET /api/sonarr/storage", h.storage)
 	mux.HandleFunc("POST /api/sonarr/candidates", h.candidates)
 	mux.HandleFunc("POST /api/sonarr/match", h.saveMatch)
 }
@@ -38,8 +40,8 @@ func (h *sonarrHandlers) getSettings(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]radarrInstanceStatus{
-		"fourK": {URL: settings.FourK.URL, Configured: settings.FourK.APIKey != ""},
-		"hd":    {URL: settings.HD.URL, Configured: settings.HD.APIKey != ""},
+		"fourK": {URL: settings.FourK.URL, Configured: settings.FourK.APIKey != "", RootFolder: settings.FourK.RootFolder},
+		"hd":    {URL: settings.HD.URL, Configured: settings.HD.APIKey != "", RootFolder: settings.HD.RootFolder},
 	})
 }
 

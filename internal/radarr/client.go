@@ -14,6 +14,9 @@ import (
 type Instance struct {
 	URL    string `json:"url"`
 	APIKey string `json:"apiKey"`
+	// RootFolder is the media folder whose free space the header reports. Empty
+	// means automatic: the root folder holding the most media.
+	RootFolder string `json:"rootFolder,omitempty"`
 }
 
 type Settings struct {
@@ -28,6 +31,7 @@ type Movie struct {
 	TMDBID     int    `json:"tmdbId"`
 	IMDBID     string `json:"imdbId"`
 	SizeOnDisk int64  `json:"sizeOnDisk"`
+	RootFolderPath string `json:"rootFolderPath"`
 }
 
 type Identity struct {
@@ -170,4 +174,53 @@ func (c *Client) doJSON(request *http.Request, destination any) error {
 		return fmt.Errorf("decode Radarr response: %w", err)
 	}
 	return nil
+}
+
+// RootFolder is a media root folder with the free space of the disk holding it,
+// as reported by Radarr's or Sonarr's /rootfolder endpoint.
+type RootFolder struct {
+	Path      string `json:"path"`
+	FreeSpace int64  `json:"freeSpace"`
+}
+
+// RootFolders lists the root folders Radarr stores media in.
+func (c *Client) RootFolders(ctx context.Context) ([]RootFolder, error) {
+	request, err := c.newRequest(ctx, http.MethodGet, "/rootfolder")
+	if err != nil {
+		return nil, err
+	}
+	var folders []RootFolder
+	if err := c.doJSON(request, &folders); err != nil {
+		return nil, err
+	}
+	return folders, nil
+}
+
+// NormalizePath makes root folder paths comparable: no trailing separator,
+// case-insensitive (Windows hosts report drive letters in either case).
+func NormalizePath(path string) string {
+	return strings.ToLower(strings.TrimRight(strings.TrimSpace(path), `/\`))
+}
+
+// ChooseRootFolder picks the root folder whose free space should be reported.
+// An explicitly configured path wins; otherwise it is the folder holding the
+// most media, according to usage (bytes on disk by NormalizePath'd root folder).
+func ChooseRootFolder(folders []RootFolder, configured string, usage map[string]int64) (RootFolder, bool) {
+	if len(folders) == 0 {
+		return RootFolder{}, false
+	}
+	if want := NormalizePath(configured); want != "" {
+		for _, folder := range folders {
+			if NormalizePath(folder.Path) == want {
+				return folder, true
+			}
+		}
+	}
+	best := folders[0]
+	for _, folder := range folders[1:] {
+		if usage[NormalizePath(folder.Path)] > usage[NormalizePath(best.Path)] {
+			best = folder
+		}
+	}
+	return best, true
 }

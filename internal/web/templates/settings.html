@@ -50,6 +50,10 @@
                 <input id="{{.Prefix}}-4k-url" type="url" placeholder="http://{{.Prefix}}-4k:{{.Port}}" autocomplete="url">
                 <label for="{{.Prefix}}-4k-key">API key</label>
                 <input id="{{.Prefix}}-4k-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key">
+                <label for="{{.Prefix}}-4k-folder">Folder for free space</label>
+                <select id="{{.Prefix}}-4k-folder" data-folder="4k" disabled>
+                  <option value="">Save the connection to choose a folder</option>
+                </select>
                 <div class="instance-actions">
                   <button class="button button-secondary" type="button" data-test="4k">Test connection</button>
                   <button class="button button-danger" type="button" data-clear="4k" hidden>Clear</button>
@@ -63,6 +67,10 @@
                 <input id="{{.Prefix}}-hd-url" type="url" placeholder="http://{{.Prefix}}-hd:{{.Port}}" autocomplete="url">
                 <label for="{{.Prefix}}-hd-key">API key</label>
                 <input id="{{.Prefix}}-hd-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key">
+                <label for="{{.Prefix}}-hd-folder">Folder for free space</label>
+                <select id="{{.Prefix}}-hd-folder" data-folder="hd" disabled>
+                  <option value="">Save the connection to choose a folder</option>
+                </select>
                 <div class="instance-actions">
                   <button class="button button-secondary" type="button" data-test="hd">Test connection</button>
                   <button class="button button-danger" type="button" data-clear="hd" hidden>Clear</button>

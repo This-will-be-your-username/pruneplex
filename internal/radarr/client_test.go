@@ -71,3 +71,31 @@ func TestValidateInstance(t *testing.T) {
 		t.Fatalf("empty instance should be allowed: %v", err)
 	}
 }
+
+func TestChooseRootFolder(t *testing.T) {
+	folders := []RootFolder{
+		{Path: "/data/movies", FreeSpace: 100},
+		{Path: "/data/movies-4k/", FreeSpace: 200},
+		{Path: `D:\Media`, FreeSpace: 300},
+	}
+	usage := map[string]int64{
+		NormalizePath("/data/movies"):     10,
+		NormalizePath("/data/movies-4k"):  50,
+		NormalizePath(`D:\Media`):         5,
+	}
+	if got, ok := ChooseRootFolder(folders, "", usage); !ok || got.FreeSpace != 200 {
+		t.Fatalf("automatic should pick the folder holding the most media, got %+v", got)
+	}
+	if got, _ := ChooseRootFolder(folders, "/DATA/movies", usage); got.FreeSpace != 100 {
+		t.Fatalf("configured folder should win (case-insensitively), got %+v", got)
+	}
+	if got, _ := ChooseRootFolder(folders, `d:\media\`, usage); got.FreeSpace != 300 {
+		t.Fatalf("trailing separators must not matter, got %+v", got)
+	}
+	if got, _ := ChooseRootFolder(folders, "/gone", usage); got.FreeSpace != 200 {
+		t.Fatalf("a configured folder that no longer exists falls back to automatic, got %+v", got)
+	}
+	if _, ok := ChooseRootFolder(nil, "", usage); ok {
+		t.Fatal("no root folders should report not-found")
+	}
+}

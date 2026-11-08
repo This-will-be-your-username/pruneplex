@@ -23,12 +23,14 @@ function initSettingsForm(form) {
       url: document.querySelector(`#${prefix}-4k-url`),
       apiKey: document.querySelector(`#${prefix}-4k-key`),
       state: document.querySelector(`#${prefix}-4k-state`),
+      folder: document.querySelector(`#${prefix}-4k-folder`),
     },
     hd: {
       key: 'hd',
       url: document.querySelector(`#${prefix}-hd-url`),
       apiKey: document.querySelector(`#${prefix}-hd-key`),
       state: document.querySelector(`#${prefix}-hd-state`),
+      folder: document.querySelector(`#${prefix}-hd-folder`),
     },
   };
   const label = (quality) => `${quality === '4k' ? '4K' : 'HD'} ${name}`;
@@ -36,6 +38,46 @@ function initSettingsForm(form) {
   function showMessage(text, kind = '') {
     message.textContent = text;
     message.className = `settings-message ${kind}`.trim();
+  }
+
+  function formatSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit += 1;
+    }
+    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+  }
+
+  // The header reports free space for one root folder. List the connected
+  // instance's folders so the user can pick which; blank means automatic.
+  async function fillFolders(quality, item, saved) {
+    const select = item.folder;
+    select.replaceChildren(new Option('Automatic (folder holding the most media)', ''));
+    if (!saved.configured) {
+      select.options[0].textContent = 'Save the connection to choose a folder';
+      select.disabled = true;
+      return;
+    }
+    select.disabled = false;
+    let paths = [];
+    try {
+      const { folders } = await request(`${api}/rootfolders?quality=${quality}`);
+      paths = folders.map((folder) => folder.path);
+      for (const folder of folders) {
+        select.append(new Option(`${folder.path} (${formatSize(folder.freeSpace)} free)`, folder.path));
+      }
+    } catch {
+      // Instance unreachable: fall through and keep the saved choice selectable.
+    }
+    // Never drop a saved folder just because the list could not be loaded.
+    if (saved.rootFolder && !paths.includes(saved.rootFolder)) {
+      select.append(new Option(`${saved.rootFolder} (saved)`, saved.rootFolder));
+    }
+    select.value = saved.rootFolder || '';
   }
 
   async function loadSettings() {
@@ -46,6 +88,7 @@ function initSettingsForm(form) {
       item.state.textContent = saved.configured ? 'Configured' : 'Not configured';
       item.state.classList.toggle('configured', saved.configured);
       form.querySelector(`[data-clear="${quality}"]`).hidden = !saved.configured;
+      await fillFolders(quality, item, saved);
     }
   }
 
@@ -57,8 +100,8 @@ function initSettingsForm(form) {
       await request(api, {
         method: 'PUT',
         body: JSON.stringify({
-          fourK: { url: instances['4k'].url.value, apiKey: instances['4k'].apiKey.value },
-          hd: { url: instances.hd.url.value, apiKey: instances.hd.apiKey.value },
+          fourK: { url: instances['4k'].url.value, apiKey: instances['4k'].apiKey.value, rootFolder: instances['4k'].folder.value },
+          hd: { url: instances.hd.url.value, apiKey: instances.hd.apiKey.value, rootFolder: instances.hd.folder.value },
         }),
       });
       for (const instance of Object.values(instances)) instance.apiKey.value = '';

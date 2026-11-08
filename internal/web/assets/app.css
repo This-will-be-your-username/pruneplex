@@ -312,8 +312,9 @@ td.is-top-4k {
 .instance-state { margin: -5px 0 21px; color: #999; font: 9px var(--mono); }
 .instance-state.configured { color: #76c69f; }
 .settings-instance label { display: block; margin: 15px 0 7px; color: #ccc; font-size: 11px; font-weight: 700; }
-.settings-instance input { width: 100%; height: 40px; border: 1px solid #484848; border-radius: 4px; padding: 0 11px; background: var(--white); color: var(--ink); font: 11px var(--mono); }
-.settings-instance input:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+.settings-instance input, .settings-instance select { width: 100%; height: 40px; border: 1px solid #484848; border-radius: 4px; padding: 0 11px; background: var(--white); color: var(--ink); font: 11px var(--mono); }
+.settings-instance input:focus, .settings-instance select:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+.settings-instance select:disabled { opacity: .6; }
 .settings-instance input::placeholder { color: #888; font: 10px var(--sans); }
 .instance-actions { display: flex; gap: 8px; margin-top: 18px; }
 .settings-save-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 19px; border-top: 1px solid var(--line); }
@@ -394,3 +395,10 @@ td.is-top-4k {
 .completeness-ring.is-partial { color: #f2b632; }
 .completeness-ring.is-sparse { color: #e05a5a; }
 .completeness-ring .ring-value { stroke: currentColor; }
+
+/* Disk usage beside the library name */
+.title-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; }
+.storage-summary { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.storage-chip { display: inline-flex; align-items: baseline; gap: 6px; color: #aaa; font: 10px var(--mono); }
+.storage-chip b { color: #ccc; font-weight: 700; }
+.storage-chip.is-error { color: #e05a5a; }

@@ -30,6 +30,7 @@ type Series struct {
 	IMDBID     string `json:"imdbId"`
 	// Status is "continuing", "ended", "upcoming" or "deleted".
 	Status     string `json:"status"`
+	RootFolderPath string `json:"rootFolderPath"`
 	Statistics struct {
 		SizeOnDisk int64 `json:"sizeOnDisk"`
 		// EpisodeFileCount of EpisodeCount (monitored, aired) episodes are on disk.
@@ -165,4 +166,28 @@ func (c *Client) newRequest(ctx context.Context, method, path string) (*http.Req
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("X-Api-Key", c.instance.APIKey)
 	return request, nil
+}
+
+// RootFolder is a media root folder with its disk's free space.
+type RootFolder = radarr.RootFolder
+
+// RootFolders lists the root folders Sonarr stores series in.
+func (c *Client) RootFolders(ctx context.Context) ([]RootFolder, error) {
+	request, err := c.newRequest(ctx, http.MethodGet, "/rootfolder")
+	if err != nil {
+		return nil, err
+	}
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("request Sonarr root folders: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("Sonarr returned HTTP %d", response.StatusCode)
+	}
+	var folders []RootFolder
+	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&folders); err != nil {
+		return nil, fmt.Errorf("decode Sonarr response: %w", err)
+	}
+	return folders, nil
 }
