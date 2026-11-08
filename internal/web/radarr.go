@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"space-analyzer/internal/radarr"
+	"pruneplex/internal/radarr"
 )
 
 type radarrSettingsStore struct {
@@ -33,13 +33,13 @@ type radarrInstanceStatus struct {
 }
 
 func newRadarrSettingsStore() *radarrSettingsStore {
-	path := os.Getenv("SPACE_ANALYZER_CONFIG")
+	path := os.Getenv("PRUNEPLEX_CONFIG")
 	if path == "" {
 		configDir, err := os.UserConfigDir()
 		if err != nil {
 			return &radarrSettingsStore{loadErr: err}
 		}
-		path = filepath.Join(configDir, "space-analyzer", "radarr.json")
+		path = filepath.Join(configDir, "pruneplex", "radarr.json")
 	}
 	return newRadarrSettingsStoreAt(path)
 }

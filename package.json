@@ -1,5 +1,5 @@
 {
-  "name": "space-analyzer",
+  "name": "pruneplex",
   "private": true,
   "scripts": {
     "test": "node test/highlight.test.js && node test/dom_highlight.test.js && node test/render_movie.test.js"

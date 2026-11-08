@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"space-analyzer/internal/web"
+	"pruneplex/internal/web"
 )
 
 func main() {

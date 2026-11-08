@@ -1,3 +1,3 @@
-module space-analyzer
+module pruneplex
 
 go 1.26

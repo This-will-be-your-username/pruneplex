@@ -1,7 +1,7 @@
 # Cached credentials / local settings (Radarr API key etc.)
 radarr.json
 .radarr-settings-*
-space-analyzer/
+pruneplex/
 .env
 .env.*
 *.local.json

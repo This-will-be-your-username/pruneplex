@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"space-analyzer/internal/radarr"
+	"pruneplex/internal/radarr"
 )
 
 func TestHandlerRoutes(t *testing.T) {

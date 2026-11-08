@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"space-analyzer/internal/radarr"
+	"pruneplex/internal/radarr"
 )
 
 func TestRadarrSettingsStorePersistsPrivateFile(t *testing.T) {

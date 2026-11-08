@@ -3,7 +3,7 @@ package web
 import (
 	"testing"
 
-	"space-analyzer/internal/plex"
+	"pruneplex/internal/plex"
 )
 
 func TestHighlightTop4KVideos(t *testing.T) {

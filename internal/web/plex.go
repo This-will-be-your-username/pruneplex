@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"space-analyzer/internal/plex"
-	"space-analyzer/internal/radarr"
+	"pruneplex/internal/plex"
+	"pruneplex/internal/radarr"
 )
 
-const plexSessionCookie = "space_analyzer_session"
+const plexSessionCookie = "pruneplex_session"
 
 type plexConnector struct {
 	mu       sync.Mutex
