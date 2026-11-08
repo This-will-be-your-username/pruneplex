@@ -17,11 +17,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+          cache: false # no go.sum to key the cache on (the project has no dependencies)
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: go vet ./...
@@ -32,16 +33,20 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
       - name: Build all platforms
-        env:
-          # Tag name on releases, short commit SHA otherwise. Passed via env
-          # (not interpolated into the script) to avoid shell injection.
-          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
-        run: go run ./tools/build -version "$VERSION"
+        run: |
+          # Tag builds are named after the tag; everything else is "edge-<short sha>".
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION="edge-${GITHUB_SHA::7}"
+          fi
+          go run ./tools/build -version "$VERSION"
       - name: Verify checksums
         working-directory: dist
         run: |
@@ -60,12 +65,13 @@ jobs:
           done
           curl -fsS http://127.0.0.1:18081/healthz | grep -q '"status":"ok"'
           kill $pid
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pruneplex-binaries
           path: dist/*
           if-no-files-found: error
 
+  # A versioned release, published when a v* tag is pushed.
   release:
     if: github.ref_type == 'tag'
     needs: build
@@ -73,7 +79,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: pruneplex-binaries
           path: dist
@@ -87,3 +93,30 @@ jobs:
           # Tags like v1.0.0-rc1 are published as pre-releases.
           case "$TAG" in *-*) flags="--prerelease" ;; esac
           gh release create "$TAG" dist/* --repo "$REPO" --title "$TAG" --generate-notes $flags
+
+  # A rolling pre-release named "edge", replaced on every push to main, so the
+  # newest binaries are always on the Releases page without tagging anything.
+  edge:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: edge-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: pruneplex-binaries
+          path: dist
+      - name: Replace the edge pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          gh release delete edge --repo "$REPO" --cleanup-tag --yes || true
+          gh release create edge dist/* --repo "$REPO" --target "$SHA" --prerelease \
+            --title "Latest build (edge)" \
+            --notes "Automated build of \`main\` at ${SHA::7}. Unversioned and may be unstable; use a tagged release for something dependable."

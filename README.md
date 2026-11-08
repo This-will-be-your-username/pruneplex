@@ -189,9 +189,16 @@ npm test
 
 ## Releases
 
-CI (`.github/workflows/ci.yml`) runs tests on every push/PR and builds all
-platforms and smoke-tests the Linux binary. Pushing a tag like `v1.0.0` (a tag containing a `-`, such as `v1.0.0-rc1`, becomes a pre-release) publishes a GitHub release with the
-binaries and `SHA256SUMS`:
+CI (`.github/workflows/ci.yml`) runs `go vet`, the Go and JS tests, builds every
+platform, verifies the checksums and smoke-tests the Linux binary on each push
+and pull request. Two kinds of release are published to the
+[Releases](https://github.com/This-will-be-your-username/pruneplex/releases) page:
+
+- **`edge`**: every push to `main` replaces a rolling pre-release named *Latest
+  build (edge)* with fresh binaries and `SHA256SUMS`. No tagging needed; it is
+  unversioned and may be unstable.
+- **Versioned releases**: pushing a tag publishes a release with generated notes.
+  A tag containing a `-` (such as `v1.0.0-rc1`) is marked as a pre-release.
 
 ```sh
 git tag v1.0.0 && git push origin v1.0.0
