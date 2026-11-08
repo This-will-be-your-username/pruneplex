@@ -84,3 +84,34 @@ func TestSonarrIdentityKeyPrefersTVDB(t *testing.T) {
 		t.Fatal("title-only keys must include the year")
 	}
 }
+
+func TestClearMatchEndpointsRemoveManualMatches(t *testing.T) {
+	key := plexMatchKey("Some Title", 2020)
+	for _, test := range []struct{ endpoint, file string }{
+		{"/api/radarr/match/clear", "radarr-matches.json"},
+		{"/api/sonarr/match/clear", "sonarr-matches.json"},
+	} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, test.file)
+		if err := newRadarrMatchStore(path).set("hd", key, 5); err != nil {
+			t.Fatal(err)
+		}
+		// Build the handler after seeding so it loads the saved match from disk.
+		handler := newHandler(newRadarrSettingsStoreAt(filepath.Join(dir, "radarr.json")))
+
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, test.endpoint, strings.NewReader(`{"quality":"hd","plexTitle":"Some Title","plexYear":2020}`)))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s: status %d %s", test.endpoint, response.Code, response.Body.String())
+		}
+		if _, ok := newRadarrMatchStore(path).get("hd", key); ok {
+			t.Fatalf("%s did not remove the match from %s", test.endpoint, test.file)
+		}
+
+		bad := httptest.NewRecorder()
+		handler.ServeHTTP(bad, httptest.NewRequest(http.MethodPost, test.endpoint, strings.NewReader(`{"quality":"nope","plexTitle":"x"}`)))
+		if bad.Code != http.StatusBadRequest {
+			t.Fatalf("%s: invalid quality should be rejected, got %d", test.endpoint, bad.Code)
+		}
+	}
+}

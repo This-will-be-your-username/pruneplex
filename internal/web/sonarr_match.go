@@ -167,7 +167,9 @@ func (h *sonarrHandlers) saveMatch(w http.ResponseWriter, r *http.Request) {
 				writeAPIError(w, http.StatusInternalServerError, "Could not save the match")
 				return
 			}
-			matches[quality] = newSonarrCopy(s)
+			copy := newSonarrCopy(s)
+			copy.Manual = true
+			matches[quality] = copy
 			break
 		}
 	}
@@ -176,4 +178,8 @@ func (h *sonarrHandlers) saveMatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"matches": matches})
+}
+
+func (h *sonarrHandlers) clearMatch(w http.ResponseWriter, r *http.Request) {
+	clearManualMatch(h.store, w, r)
 }

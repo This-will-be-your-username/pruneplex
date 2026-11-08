@@ -40,3 +40,27 @@ func TestRadarrIdentityKeyMatchesSameFilmAcrossInstances(t *testing.T) {
 		t.Fatal("title-only keys must include the year")
 	}
 }
+
+func TestRadarrMatchStoreRemoveForgetsOnlyThatMatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "radarr-matches.json")
+	store := newRadarrMatchStore(path)
+	a, b := plexMatchKey("A", 2000), plexMatchKey("B", 2001)
+	for _, key := range []string{a, b} {
+		if err := store.set("4k", key, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.remove("4k", a); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.remove("4k", plexMatchKey("never saved", 1999)); err != nil {
+		t.Fatalf("removing an unknown match must not fail: %v", err)
+	}
+	reloaded := newRadarrMatchStore(path)
+	if _, ok := reloaded.get("4k", a); ok {
+		t.Fatal("removed match came back after reload")
+	}
+	if _, ok := reloaded.get("4k", b); !ok {
+		t.Fatal("unrelated match was removed")
+	}
+}

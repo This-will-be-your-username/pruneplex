@@ -31,6 +31,7 @@ func (h *sonarrHandlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/sonarr/storage", h.storage)
 	mux.HandleFunc("POST /api/sonarr/candidates", h.candidates)
 	mux.HandleFunc("POST /api/sonarr/match", h.saveMatch)
+	mux.HandleFunc("POST /api/sonarr/match/clear", h.clearMatch)
 }
 
 func (h *sonarrHandlers) getSettings(w http.ResponseWriter, _ *http.Request) {
@@ -262,6 +263,7 @@ func (c *plexConnector) showResponse(ctx context.Context, result plex.ShowAnalys
 				}
 			}
 		}
+		manualMatch := ok
 		if !ok {
 			series, ok = sonarr.FindSeries(sonarr.Identity{
 				Title: show.Title, Year: show.Year, TVDBID: show.TVDBID, TMDBID: show.TMDBID, IMDBID: show.IMDBID,
@@ -270,7 +272,7 @@ func (c *plexConnector) showResponse(ctx context.Context, result plex.ShowAnalys
 		if !ok {
 			return nil
 		}
-		return &radarrMovieMatch{ID: series.ID, Title: series.Title, Year: series.Year, SizeBytes: series.SizeOnDisk(), Status: series.Status, EpisodeFiles: series.Statistics.EpisodeFileCount, EpisodeCount: series.Statistics.EpisodeCount}
+		return &radarrMovieMatch{ID: series.ID, Title: series.Title, Year: series.Year, SizeBytes: series.SizeOnDisk(), Status: series.Status, EpisodeFiles: series.Statistics.EpisodeFileCount, EpisodeCount: series.Statistics.EpisodeCount, Manual: manualMatch}
 	}
 	enrich := func(shows []plex.Show) []analyzedShow {
 		out := make([]analyzedShow, 0, len(shows))

@@ -128,6 +128,7 @@ func (h *radarrHandlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/radarr/storage", h.storage)
 	mux.HandleFunc("POST /api/radarr/candidates", h.candidates)
 	mux.HandleFunc("POST /api/radarr/match", h.saveMatch)
+	mux.HandleFunc("POST /api/radarr/match/clear", h.clearMatch)
 }
 
 type settingsSection struct {
@@ -317,6 +318,7 @@ type radarrMovieCopy struct {
 	Year      int    `json:"year"`
 	SizeBytes int64  `json:"sizeBytes"`
 	Status    string `json:"status,omitempty"` // Sonarr series status
+	Manual    bool   `json:"manual,omitempty"`
 	EpisodeFiles int `json:"episodeFiles,omitempty"`
 	EpisodeCount int `json:"episodeCount,omitempty"`
 }
@@ -459,7 +461,9 @@ func (h *radarrHandlers) saveMatch(w http.ResponseWriter, r *http.Request) {
 				writeAPIError(w, http.StatusInternalServerError, "Could not save the match")
 				return
 			}
-			matches[quality] = newRadarrMovieCopy(m)
+			copy := newRadarrMovieCopy(m)
+			copy.Manual = true
+			matches[quality] = copy
 			break
 		}
 	}
@@ -468,4 +472,8 @@ func (h *radarrHandlers) saveMatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"matches": matches})
+}
+
+func (h *radarrHandlers) clearMatch(w http.ResponseWriter, r *http.Request) {
+	clearManualMatch(h.store, w, r)
 }

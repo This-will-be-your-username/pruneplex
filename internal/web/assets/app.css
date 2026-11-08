@@ -402,3 +402,14 @@ td.is-top-4k {
 .storage-chip { display: inline-flex; align-items: baseline; gap: 6px; color: #aaa; font: 10px var(--mono); }
 .storage-chip b { color: #ccc; font-weight: 700; }
 .storage-chip.is-error { color: #e05a5a; }
+
+/* Clear a manual Radarr/Sonarr match */
+.radarr-match-title-row { display: flex; align-items: center; gap: 6px; }
+.unlink-match {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0; line-height: 1;
+  background: transparent; color: #999; border: 1px solid #444; border-radius: 50%;
+  font: 12px var(--sans); cursor: pointer;
+}
+.unlink-match:hover:not(:disabled) { color: #e6e6e6; border-color: #f2b632; }
+.unlink-match:disabled { opacity: .5; cursor: default; }

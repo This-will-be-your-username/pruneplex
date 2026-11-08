@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,4 +84,52 @@ func (s *radarrSettingsStore) matches() *radarrMatchStore {
 		s.matchStore = newRadarrMatchStore(path)
 	})
 	return s.matchStore
+}
+
+// remove forgets a manual match; the movie or show then falls back to automatic
+// matching. Removing a match that doesn't exist is not an error.
+func (s *radarrMatchStore) remove(quality, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.value[quality][key]; !ok {
+		return nil
+	}
+	next := map[string]map[string]int{}
+	for q, m := range s.value {
+		next[q] = map[string]int{}
+		for k, v := range m {
+			if q == quality && k == key {
+				continue
+			}
+			next[q][k] = v
+		}
+	}
+	if s.path != "" {
+		if err := writeFileAtomic(s.path, next); err != nil {
+			return err
+		}
+	}
+	s.value = next
+	return nil
+}
+
+// clearMatchRequest identifies the manual match to forget.
+type clearMatchRequest struct {
+	Quality   string `json:"quality"`
+	PlexTitle string `json:"plexTitle"`
+	PlexYear  int    `json:"plexYear"`
+}
+
+// clearManualMatch implements POST .../match/clear for both Radarr and Sonarr.
+func clearManualMatch(store *radarrSettingsStore, w http.ResponseWriter, r *http.Request) {
+	var input clearMatchRequest
+	if err := decodeJSON(w, r, &input); err != nil || strings.TrimSpace(input.PlexTitle) == "" || (input.Quality != "4k" && input.Quality != "hd") {
+		writeAPIError(w, http.StatusBadRequest, "Invalid match")
+		return
+	}
+	if err := store.matches().remove(input.Quality, plexMatchKey(input.PlexTitle, input.PlexYear)); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "Could not clear the match")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"cleared": true})
 }

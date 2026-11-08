@@ -55,6 +55,7 @@ const MEDIA = isTV
       matching: true,
       candidatesURL: '/api/sonarr/candidates',
       matchURL: '/api/sonarr/match',
+      clearURL: '/api/sonarr/match/clear',
       scanning: 'Scanning TV libraries…',
       done: 'TV scan complete.',
     }
@@ -74,6 +75,7 @@ const MEDIA = isTV
       matching: true,
       candidatesURL: '/api/radarr/candidates',
       matchURL: '/api/radarr/match',
+      clearURL: '/api/radarr/match/clear',
       scanning: 'Scanning movie libraries…',
       done: 'Movie scan complete.',
     };
@@ -774,6 +776,42 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
   const matchTitle = document.createElement('span');
   matchTitle.className = 'radarr-match-title';
   matchTitle.textContent = match.year ? `${match.title} (${match.year})` : match.title;
+
+  // A match picked by hand (Find match) can be cleared again with a small button.
+  const titleRow = document.createElement('div');
+  titleRow.className = 'radarr-match-title-row';
+  titleRow.append(matchTitle);
+  let unlinkButton = null;
+  if (match.manual && MEDIA.matching) {
+    unlinkButton = document.createElement('button');
+    unlinkButton.type = 'button';
+    unlinkButton.className = 'unlink-match';
+    unlinkButton.textContent = '×';
+    unlinkButton.title = 'Clear this manual match';
+    unlinkButton.setAttribute('aria-label', `Clear the manual ${label} match for ${movie.title}`);
+    unlinkButton.addEventListener('click', async () => {
+      unlinkButton.disabled = true;
+      try {
+        await request(MEDIA.clearURL, {
+          method: 'POST',
+          body: JSON.stringify({ quality, plexTitle: movie.title, plexYear: movie.year || 0 }),
+        });
+        if (is4KInstance) movie.radarr4k = null; else movie.radarrHd = null;
+        const row = cell.closest('tr');
+        cell.replaceWith(createRadarrCell(movie, quality, columns));
+        if (row) {
+          const size = is4KInstance ? get4KSize(movie) : getHDSize(movie);
+          const key = is4KInstance ? 'fourKSize' : 'hdSize';
+          if (size > 0) row.dataset[key] = String(size); else delete row.dataset[key];
+          if (isTV) row.querySelector('.show-status')?.replaceWith(createStatusIcon(movie));
+        }
+      } catch (error) {
+        unlinkButton.disabled = false;
+        showMessage(error.message, 'error');
+      }
+    });
+    titleRow.append(unlinkButton);
+  }
   const matchSize = document.createElement('span');
   matchSize.className = 'radarr-match-size';
   if (match.sizeBytes > 0) {
@@ -800,6 +838,7 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
         body: JSON.stringify(MEDIA.removeBody(quality, match.id)),
       });
       matchTitle.textContent = 'Removed';
+      unlinkButton?.remove();
       loadStorage(); // freed space shows up in the header
       ring?.remove();
       button.textContent = 'Removed';
@@ -816,7 +855,7 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
   });
   const wrapper = document.createElement('div');
   wrapper.className = 'radarr-match';
-  wrapper.append(matchTitle, matchSize, button);
+  wrapper.append(titleRow, matchSize, button);
   cell.append(wrapper);
   return cell;
 }

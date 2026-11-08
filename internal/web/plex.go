@@ -484,6 +484,7 @@ func (c *plexConnector) movieResponse(ctx context.Context, result plex.Analysis)
 				}
 			}
 		}
+		manualMatch := ok
 		if !ok {
 			identity := radarr.Identity{Title: movie.Title, Year: movie.Year, TMDBID: movie.TMDBID, IMDBID: movie.IMDBID}
 			found, ok = radarr.FindMovie(identity, library)
@@ -491,7 +492,7 @@ func (c *plexConnector) movieResponse(ctx context.Context, result plex.Analysis)
 		if !ok {
 			return nil
 		}
-		return &radarrMovieMatch{ID: found.ID, Title: found.Title, Year: found.Year, SizeBytes: found.SizeOnDisk}
+		return &radarrMovieMatch{ID: found.ID, Title: found.Title, Year: found.Year, SizeBytes: found.SizeOnDisk, Manual: manualMatch}
 	}
 	enrich := func(movies []plex.Movie) []analyzedMovie {
 		out := make([]analyzedMovie, 0, len(movies))
@@ -641,6 +642,7 @@ type radarrMovieMatch struct {
 	Year      int    `json:"year"`
 	SizeBytes int64  `json:"sizeBytes"`
 	Status    string `json:"status,omitempty"` // Sonarr series status: continuing, ended, ...
+	Manual    bool   `json:"manual,omitempty"` // chosen by hand rather than matched automatically
 	// Sonarr only: episodes on disk out of the monitored, aired episodes.
 	EpisodeFiles int `json:"episodeFiles,omitempty"`
 	EpisodeCount int `json:"episodeCount,omitempty"`
