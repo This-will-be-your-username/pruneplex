@@ -161,3 +161,52 @@ func TestMovieLibrariesAndLibraryFilter(t *testing.T) {
 		t.Fatalf("expected ErrUnknownLibrary, got %v", err)
 	}
 }
+
+func TestAnalyzeShowsAggregatesEpisodeResolutions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/library/sections":
+			fmt.Fprint(w, `{"MediaContainer":{"Directory":[{"key":"5","title":"TV","type":"show"},{"key":"1","title":"Films","type":"movie"}]}}`)
+		case r.URL.Path == "/library/sections/5/all" && r.URL.Query().Get("type") == "2":
+			fmt.Fprint(w, `{"MediaContainer":{"totalSize":4,"Metadata":[
+				{"ratingKey":"10","title":"Mixed Show","year":2010,"Guid":[{"id":"tvdb://111"},{"id":"imdb://tt1"}]},
+				{"ratingKey":"11","title":"UHD Show","year":2011,"Guid":[{"id":"tvdb://222"}]},
+				{"ratingKey":"12","title":"HD Show","year":2012},
+				{"ratingKey":"13","title":"Unknown Show","year":2013}]}}`)
+		case r.URL.Path == "/library/sections/5/all" && r.URL.Query().Get("type") == "4":
+			fmt.Fprint(w, `{"MediaContainer":{"totalSize":6,"Metadata":[
+				{"grandparentRatingKey":"10","Media":[{"videoResolution":"4k","Part":[{"size":100}]}]},
+				{"grandparentRatingKey":"10","Media":[{"videoResolution":"1080"}]},
+				{"grandparentRatingKey":"11","Media":[{"videoResolution":"4k"}]},
+				{"grandparentRatingKey":"12","Media":[{"videoResolution":"1080"}]},
+				{"grandparentRatingKey":"12","Media":[{"videoResolution":"1080"},{"videoResolution":"1080"}]},
+				{"grandparentRatingKey":"13","Media":[{"videoResolution":"1080"},{"container":"mkv"}]}]}}`)
+		default:
+			t.Fatalf("unexpected request %s", r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client(), "test-client")
+	result, err := client.AnalyzeShows(context.Background(), server.URL, "t", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Scanned != 4 || len(result.Matches) != 1 || len(result.Only4K) != 1 || len(result.OnlyHD) != 1 || len(result.Other) != 1 {
+		t.Fatalf("unexpected analysis: %+v", result)
+	}
+	mixed := result.Matches[0]
+	if mixed.Title != "Mixed Show" || mixed.TVDBID != 111 || mixed.IMDBID != "tt1" || mixed.Episodes != 2 || mixed.FourKSizeBytes != 100 {
+		t.Fatalf("mixed show = %+v", mixed)
+	}
+	if hd := result.OnlyHD[0]; hd.Title != "HD Show" || hd.ResolutionEpisodes["1080"] != 2 {
+		t.Fatalf("HD show = %+v", hd)
+	}
+	if result.Only4K[0].Title != "UHD Show" || result.Other[0].Title != "Unknown Show" {
+		t.Fatalf("unexpected classification: %+v / %+v", result.Only4K, result.Other)
+	}
+	if _, err := client.AnalyzeShows(context.Background(), server.URL, "t", "99"); !errors.Is(err, ErrUnknownLibrary) {
+		t.Fatalf("expected ErrUnknownLibrary, got %v", err)
+	}
+}

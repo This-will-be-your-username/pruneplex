@@ -56,11 +56,11 @@ func ValidateInstance(instance Instance) error {
 		return nil
 	}
 	if instance.URL == "" || instance.APIKey == "" {
-		return fmt.Errorf("both the Radarr URL and API key are required")
+		return fmt.Errorf("both the server URL and API key are required")
 	}
 	parsed, err := url.Parse(instance.URL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return fmt.Errorf("enter a valid Radarr URL using HTTP or HTTPS")
+		return fmt.Errorf("enter a valid server URL using HTTP or HTTPS")
 	}
 	return nil
 }

@@ -181,8 +181,8 @@ type Library struct {
 	Title string `json:"title"`
 }
 
-// MovieLibraries lists the server's movie libraries.
-func (c *Client) MovieLibraries(ctx context.Context, baseURL, token string) ([]Library, error) {
+// Libraries lists the server's libraries of one Plex section type ("movie" or "show").
+func (c *Client) Libraries(ctx context.Context, baseURL, token, sectionType string) ([]Library, error) {
 	endpoint, err := serverEndpoint(baseURL, "/library/sections")
 	if err != nil {
 		return nil, err
@@ -208,7 +208,7 @@ func (c *Client) MovieLibraries(ctx context.Context, baseURL, token string) ([]L
 	}
 	var libraries []Library
 	for _, section := range sections.MediaContainer.Directory {
-		if section.Type == "movie" {
+		if section.Type == sectionType {
 			libraries = append(libraries, Library{Key: section.Key, Title: section.Title})
 		}
 	}
@@ -565,8 +565,12 @@ func (guids *guidList) UnmarshalJSON(data []byte) error {
 }
 
 func parseExternalIDs(guids guidList) (int, string) {
-	var tmdbID int
-	var imdbID string
+	_, tmdbID, imdbID := parseAllIDs(guids)
+	return tmdbID, imdbID
+}
+
+// parseAllIDs extracts the TVDB, TMDB and IMDb IDs from Plex GUIDs.
+func parseAllIDs(guids guidList) (tvdbID, tmdbID int, imdbID string) {
 	for _, guid := range guids {
 		provider, value, found := strings.Cut(guid.ID, "://")
 		if !found {
@@ -576,6 +580,10 @@ func parseExternalIDs(guids guidList) (int, string) {
 		value = strings.TrimSpace(strings.SplitN(value, "?", 2)[0])
 		value = strings.TrimSpace(strings.SplitN(value, "#", 2)[0])
 		switch {
+		case provider == "tvdb" || provider == "thetvdb" || strings.HasSuffix(provider, ".tvdb") || strings.HasSuffix(provider, ".thetvdb"):
+			if parsed, err := strconv.Atoi(value); err == nil {
+				tvdbID = parsed
+			}
 		case provider == "tmdb" || provider == "themoviedb" || strings.HasSuffix(provider, ".tmdb") || strings.HasSuffix(provider, ".themoviedb"):
 			if parsed, err := strconv.Atoi(value); err == nil {
 				tmdbID = parsed
@@ -584,7 +592,7 @@ func parseExternalIDs(guids guidList) (int, string) {
 			imdbID = value
 		}
 	}
-	return tmdbID, imdbID
+	return tvdbID, tmdbID, imdbID
 }
 
 func (c *Client) moviePage(ctx context.Context, baseURL, token, sectionID string, start int) ([]libraryMovie, int, error) {
@@ -709,4 +717,14 @@ func hasUnknownResolution(media []mediaItem) bool {
 		}
 	}
 	return false
+}
+
+// MovieLibraries lists the server's movie libraries.
+func (c *Client) MovieLibraries(ctx context.Context, baseURL, token string) ([]Library, error) {
+	return c.Libraries(ctx, baseURL, token, "movie")
+}
+
+// ShowLibraries lists the server's TV show libraries.
+func (c *Client) ShowLibraries(ctx context.Context, baseURL, token string) ([]Library, error) {
+	return c.Libraries(ctx, baseURL, token, "show")
 }
