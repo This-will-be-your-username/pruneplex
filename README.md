@@ -1,4 +1,8 @@
-# PrunePlex
+<p align="center">
+  <img src="internal/web/assets/logo.svg" alt="PrunePlex logo" width="72" height="72">
+</p>
+
+<h1 align="center">PrunePlex</h1>
 
 PrunePlex is for Plex libraries where **you deliberately keep more than one
 resolution of some titles** (say a 4K copy *and* an HD copy so every device can
@@ -13,6 +17,24 @@ a multi-resolution collection, not for wiping out titles wholesale.
 
 It is built for the common setup of keeping separate **4K** and **HD** libraries,
 each managed by its own Radarr or Sonarr instance.
+
+## Screenshots
+
+**Movies**: every title that exists in more than one resolution, with ratings,
+per-copy sizes, delete buttons, and disk usage per Radarr instance in the header.
+
+![The Movies page listing movies with both 4K and 1080p copies, with ratings, Radarr sizes and delete buttons](docs/screenshots/movies.png)
+
+**TV shows**: the same view per series, with episode counts per resolution, a
+status icon (▶ continuing, ■ ended, ⏸ unknown) and a completeness ring for each
+Sonarr copy.
+
+![The TV Shows page listing series with 4K and 1080p episodes, status icons and completeness rings](docs/screenshots/tv-shows.png)
+
+**Settings**: connect your 4K and HD Radarr and Sonarr instances and choose which
+folder's free space is reported.
+
+![The Settings page with 4K and HD Radarr and Sonarr connections and a folder picker](docs/screenshots/settings.png)
 
 ## What it does
 
@@ -39,7 +61,10 @@ each managed by its own Radarr or Sonarr instance.
 3. **Review.** Each row shows the poster, title and year, rating badges (Rotten
    Tomatoes critic/audience, IMDb, TMDB, Metacritic and others, whatever Plex
    has), the resolutions present, and the matching movie in each configured
-   Radarr instance with its size on disk.
+   Radarr instance with its size on disk. Beside the library name, the header
+   totals what each configured 4K/HD Radarr (or Sonarr) instance has on disk and
+   the free space of the folder holding its media (hover for the path). A match you picked by hand shows a small
+   **×** next to its title to clear it again.
 4. **Narrow down** (Multiple resolutions tab). Filter to the top 20% largest 4K
    or HD files, the 20% lowest-rated movies, movies where the HD file is larger
    than the 4K one, or where the 4K file is within 10% of the HD size. Pick a
@@ -91,7 +116,10 @@ deletions go through Radarr or Sonarr, and only after you confirm.
 1. Run PrunePlex (see [Running](#running)) and open http://localhost:8081.
 2. Go to **Settings** and enter the URL and API key for your 4K and/or HD Radarr
    (movies) and Sonarr (TV) instances. Without these, scanning still works but
-   the Radarr/Sonarr columns show "Configure" and nothing can be deleted.
+   the Radarr/Sonarr columns show "Configure" and nothing can be deleted. Once
+   an instance is saved, a **Folder for free space** picker appears under it. By
+   default PrunePlex reports the free space of the root folder holding the most
+   media; choose another folder there if that is not the one you care about.
 3. Back on **Movies** (or **TV Shows**), click **Connect Plex**, choose your server, pick a
    library and click **Analyze movies**.
 
