@@ -286,93 +286,170 @@ func (h *radarrHandlers) listMovies(ctx context.Context, instance radarr.Instanc
 	return radarr.NewClient(h.client, instance).Movies(ctx)
 }
 
+// radarrCandidate is one movie that might be the Plex movie being matched. It
+// carries the copy found in each configured Radarr instance, so a single pick
+// can fix both the 4K and HD columns.
 type radarrCandidate struct {
+	Title  string           `json:"title"`
+	Year   int              `json:"year"`
+	TMDBID int              `json:"tmdbId,omitempty"`
+	IMDBID string           `json:"imdbId,omitempty"`
+	FourK  *radarrMovieCopy `json:"fourK,omitempty"`
+	HD     *radarrMovieCopy `json:"hd,omitempty"`
+}
+
+type radarrMovieCopy struct {
 	ID        int    `json:"id"`
 	Title     string `json:"title"`
 	Year      int    `json:"year"`
-	TMDBID    int    `json:"tmdbId,omitempty"`
-	IMDBID    string `json:"imdbId,omitempty"`
 	SizeBytes int64  `json:"sizeBytes"`
 }
 
-func newRadarrCandidate(m radarr.Movie) radarrCandidate {
-	return radarrCandidate{ID: m.ID, Title: m.Title, Year: m.Year, TMDBID: m.TMDBID, IMDBID: m.IMDBID, SizeBytes: m.SizeOnDisk}
+func newRadarrMovieCopy(m radarr.Movie) *radarrMovieCopy {
+	return &radarrMovieCopy{ID: m.ID, Title: m.Title, Year: m.Year, SizeBytes: m.SizeOnDisk}
 }
 
-func (h *radarrHandlers) instanceMovies(w http.ResponseWriter, r *http.Request, quality string) []radarr.Movie {
+var radarrQualities = []string{"4k", "hd"}
+
+// radarrIdentityKey identifies a film across Radarr instances: TMDB ID, else
+// IMDb ID, else title and year.
+func radarrIdentityKey(m radarr.Movie) string {
+	switch {
+	case m.TMDBID > 0:
+		return fmt.Sprintf("tmdb:%d", m.TMDBID)
+	case m.IMDBID != "":
+		return "imdb:" + strings.ToLower(m.IMDBID)
+	default:
+		return "title:" + plexMatchKey(m.Title, m.Year)
+	}
+}
+
+// libraries loads the movie list of every configured Radarr instance, keyed by
+// quality. Unconfigured instances are omitted. It writes the error response
+// itself and returns nil on failure.
+func (h *radarrHandlers) libraries(w http.ResponseWriter, r *http.Request) map[string][]radarr.Movie {
 	settings, err := h.store.snapshot()
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "Could not read Radarr settings")
 		return nil
 	}
-	instance, err := configuredInstance(settings, quality)
-	if err != nil || instance.APIKey == "" {
-		writeAPIError(w, http.StatusBadRequest, "That Radarr instance is not configured")
+	libraries := map[string][]radarr.Movie{}
+	for _, quality := range radarrQualities {
+		instance, _ := configuredInstance(settings, quality)
+		if instance.APIKey == "" {
+			continue
+		}
+		movies, err := h.listMovies(r.Context(), instance)
+		if err != nil {
+			writeAPIError(w, http.StatusBadGateway, "Could not read the "+strings.ToUpper(quality)+" Radarr library")
+			return nil
+		}
+		libraries[quality] = movies
+	}
+	if len(libraries) == 0 {
+		writeAPIError(w, http.StatusBadRequest, "Configure a Radarr instance first")
 		return nil
 	}
-	movies, err := h.listMovies(r.Context(), instance)
-	if err != nil {
-		writeAPIError(w, http.StatusBadGateway, "Could not read the Radarr library")
-		return nil
-	}
-	return movies
+	return libraries
 }
 
-// candidates returns a shortlist of Radarr movies that might be the given Plex
-// movie. If query is set it replaces the title, so users can refine the search.
+// candidates returns one shortlist of films, merged across all configured
+// Radarr instances, that might be the given Plex movie. If query is set it
+// replaces the title so users can refine the search.
 func (h *radarrHandlers) candidates(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Quality string `json:"quality"`
-		Title   string `json:"title"`
-		Year    int    `json:"year"`
-		Query   string `json:"query"`
+		Title string `json:"title"`
+		Year  int    `json:"year"`
+		Query string `json:"query"`
 	}
 	if err := decodeJSON(w, r, &input); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "Invalid candidate request")
 		return
 	}
-	movies := h.instanceMovies(w, r, input.Quality)
-	if movies == nil {
+	libraries := h.libraries(w, r)
+	if libraries == nil {
 		return
 	}
+
+	// Union of films across instances (first instance's title/year wins), plus
+	// a per-instance lookup to attach each copy afterwards.
+	byInstance := map[string]map[string]radarr.Movie{}
+	var union []radarr.Movie
+	seen := map[string]bool{}
+	for _, quality := range radarrQualities {
+		byInstance[quality] = map[string]radarr.Movie{}
+		for _, m := range libraries[quality] {
+			key := radarrIdentityKey(m)
+			byInstance[quality][key] = m
+			if !seen[key] {
+				seen[key] = true
+				union = append(union, m)
+			}
+		}
+	}
+
 	title, year := input.Title, input.Year
 	if strings.TrimSpace(input.Query) != "" {
 		title, year = input.Query, 0
 	}
-	suggestions := radarr.Suggest(radarr.Identity{Title: title, Year: year}, movies, 8)
-	out := make([]radarrCandidate, 0, len(suggestions))
-	for _, m := range suggestions {
-		out = append(out, newRadarrCandidate(m))
+	out := []radarrCandidate{}
+	for _, m := range radarr.Suggest(radarr.Identity{Title: title, Year: year}, union, 8) {
+		key := radarrIdentityKey(m)
+		candidate := radarrCandidate{Title: m.Title, Year: m.Year, TMDBID: m.TMDBID, IMDBID: m.IMDBID}
+		if c, ok := byInstance["4k"][key]; ok {
+			candidate.FourK = newRadarrMovieCopy(c)
+		}
+		if c, ok := byInstance["hd"][key]; ok {
+			candidate.HD = newRadarrMovieCopy(c)
+		}
+		out = append(out, candidate)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"candidates": out})
 }
 
-// saveMatch records that a Plex movie corresponds to a Radarr movie.
+// saveMatch records that a Plex movie is the chosen film, in every requested
+// Radarr instance that has a copy of it.
 func (h *radarrHandlers) saveMatch(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Quality string `json:"quality"`
-		Title   string `json:"title"`
-		Year    int    `json:"year"`
-		MovieID int    `json:"movieId"`
+		PlexTitle string   `json:"plexTitle"`
+		PlexYear  int      `json:"plexYear"`
+		Title     string   `json:"title"`
+		Year      int      `json:"year"`
+		TMDBID    int      `json:"tmdbId"`
+		IMDBID    string   `json:"imdbId"`
+		Instances []string `json:"instances"`
 	}
-	if err := decodeJSON(w, r, &input); err != nil || input.MovieID <= 0 || strings.TrimSpace(input.Title) == "" {
+	if err := decodeJSON(w, r, &input); err != nil || strings.TrimSpace(input.PlexTitle) == "" || len(input.Instances) == 0 {
 		writeAPIError(w, http.StatusBadRequest, "Invalid match")
 		return
 	}
-	movies := h.instanceMovies(w, r, input.Quality)
-	if movies == nil {
+	libraries := h.libraries(w, r)
+	if libraries == nil {
 		return
 	}
-	for _, m := range movies {
-		if m.ID != input.MovieID {
+	wantKey := radarrIdentityKey(radarr.Movie{Title: input.Title, Year: input.Year, TMDBID: input.TMDBID, IMDBID: input.IMDBID})
+
+	matches := map[string]*radarrMovieCopy{}
+	for _, quality := range input.Instances {
+		library, ok := libraries[quality]
+		if !ok {
 			continue
 		}
-		if err := h.store.matches().set(input.Quality, plexMatchKey(input.Title, input.Year), m.ID); err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "Could not save the match")
-			return
+		for _, m := range library {
+			if radarrIdentityKey(m) != wantKey {
+				continue
+			}
+			if err := h.store.matches().set(quality, plexMatchKey(input.PlexTitle, input.PlexYear), m.ID); err != nil {
+				writeAPIError(w, http.StatusInternalServerError, "Could not save the match")
+				return
+			}
+			matches[quality] = newRadarrMovieCopy(m)
+			break
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"match": newRadarrCandidate(m)})
+	}
+	if len(matches) == 0 {
+		writeAPIError(w, http.StatusBadRequest, "That movie is not in the Radarr library")
 		return
 	}
-	writeAPIError(w, http.StatusBadRequest, "That movie is not in the Radarr library")
+	writeJSON(w, http.StatusOK, map[string]any{"matches": matches})
 }

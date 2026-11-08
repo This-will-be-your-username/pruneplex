@@ -608,7 +608,7 @@ function createRadarrCell(movie, quality) {
       picker.hidden = !picker.hidden;
       if (!picker.hidden && !picker.dataset.loaded) {
         picker.dataset.loaded = '1';
-        buildMatchPicker(picker, movie, quality, cell);
+        buildMatchPicker(picker, movie);
       }
     });
     cell.append(label, findButton, picker);
@@ -664,10 +664,12 @@ function createRadarrCell(movie, quality) {
 // --- Manual Radarr matching ---
 
 /**
- * Fills `picker` with a shortlist of Radarr movies that might be `movie`, plus a
- * search box to refine it. Choosing one saves the pairing and re-renders `cell`.
+ * Fills `picker` with one shortlist of films that might be `movie`, merged
+ * across the 4K and HD Radarr instances, plus a search box to refine it.
+ * Choosing one saves the pairing for every instance still lacking a match and
+ * re-renders both Radarr cells in the row.
  */
-function buildMatchPicker(picker, movie, quality, cell) {
+function buildMatchPicker(picker, movie) {
   const form = document.createElement('div');
   form.className = 'match-search';
   const input = document.createElement('input');
@@ -686,16 +688,22 @@ function buildMatchPicker(picker, movie, quality, cell) {
   list.className = 'match-candidates';
   picker.append(form, status, list);
 
+  // Instances that are configured but have no match yet.
+  const missing = () => [
+    ...(movie.radarr4kConfigured && !movie.radarr4k ? ['4k'] : []),
+    ...(movie.radarrHdConfigured && !movie.radarrHd ? ['hd'] : []),
+  ];
+
   async function load(query) {
     status.textContent = 'Searching…';
     list.replaceChildren();
     try {
       const { candidates } = await request('/api/radarr/candidates', {
         method: 'POST',
-        body: JSON.stringify({ quality, title: movie.title, year: movie.year || 0, query }),
+        body: JSON.stringify({ title: movie.title, year: movie.year || 0, query }),
       });
       status.textContent = candidates.length
-        ? 'Pick the matching movie:'
+        ? 'Pick the matching movie (applies to 4K and HD):'
         : 'No similar movies in Radarr. Try a different search.';
       for (const candidate of candidates) {
         const item = document.createElement('li');
@@ -705,10 +713,14 @@ function buildMatchPicker(picker, movie, quality, cell) {
         const title = document.createElement('span');
         title.className = 'match-candidate-title';
         title.textContent = candidate.year ? `${candidate.title} (${candidate.year})` : candidate.title;
+        const ids = [candidate.tmdbId ? `TMDB ${candidate.tmdbId}` : '', candidate.imdbId || ''].filter(Boolean);
         const detail = document.createElement('span');
         detail.className = 'match-candidate-detail';
-        const ids = [candidate.tmdbId ? `TMDB ${candidate.tmdbId}` : '', candidate.imdbId || ''].filter(Boolean);
-        detail.textContent = [formatFileSize(candidate.sizeBytes), ...ids].join(' · ');
+        detail.textContent = [
+          `4K: ${candidate.fourK ? formatFileSize(candidate.fourK.sizeBytes) : '—'}`,
+          `HD: ${candidate.hd ? formatFileSize(candidate.hd.sizeBytes) : '—'}`,
+          ...ids,
+        ].join(' · ');
         choose.append(title, detail);
         choose.addEventListener('click', () => select(candidate, choose));
         item.append(choose);
@@ -722,17 +734,30 @@ function buildMatchPicker(picker, movie, quality, cell) {
   async function select(candidate, button) {
     button.disabled = true;
     try {
-      await request('/api/radarr/match', {
+      const { matches } = await request('/api/radarr/match', {
         method: 'POST',
-        body: JSON.stringify({ quality, title: movie.title, year: movie.year || 0, movieId: candidate.id }),
+        body: JSON.stringify({
+          plexTitle: movie.title,
+          plexYear: movie.year || 0,
+          title: candidate.title,
+          year: candidate.year,
+          tmdbId: candidate.tmdbId || 0,
+          imdbId: candidate.imdbId || '',
+          instances: missing(),
+        }),
       });
-      const saved = { id: candidate.id, title: candidate.title, year: candidate.year, sizeBytes: candidate.sizeBytes };
-      if (quality === '4k') movie.radarr4k = saved; else movie.radarrHd = saved;
-      const row = cell.closest('tr');
-      cell.replaceWith(createRadarrCell(movie, quality));
+      if (matches['4k']) movie.radarr4k = matches['4k'];
+      if (matches.hd) movie.radarrHd = matches.hd;
+      const row = picker.closest('tr');
+      for (const quality of ['4k', 'hd']) {
+        const oldCell = row?.querySelector(`.radarr-cell-${quality}`);
+        if (oldCell) oldCell.replaceWith(createRadarrCell(movie, quality));
+      }
       if (row) {
-        const size = quality === '4k' ? get4KSize(movie) : getHDSize(movie);
-        if (size > 0) row.dataset[quality === '4k' ? 'fourKSize' : 'hdSize'] = String(size);
+        const fourK = get4KSize(movie);
+        const hd = getHDSize(movie);
+        if (fourK > 0) row.dataset.fourKSize = String(fourK);
+        if (hd > 0) row.dataset.hdSize = String(hd);
       }
     } catch (error) {
       button.disabled = false;

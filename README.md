@@ -54,7 +54,12 @@ deletions go through Radarr, and only after you confirm.
 3. Back on **Overview**, click **Connect Plex**, choose your server, pick a
    library and click **Analyze movies**.
 
-Movies are matched to Radarr by TMDB/IMDb ID, falling back to title and year.
+Movies are matched to Radarr automatically by TMDB/IMDb ID, falling back to an
+exact title and year. If a movie shows **No match**, click **Find match**: a
+shortlist of similar movies from your 4K and HD Radarr libraries appears (with
+each copy's size and IDs), and a search box lets you refine it. One pick fixes
+both instances at once; instances that were already matched are left alone. Your
+choices are saved in `radarr-matches.json` and reused on later scans.
 
 ## Security
 
@@ -63,7 +68,7 @@ Movies are matched to Radarr by TMDB/IMDb ID, falling back to title and year.
   delete movies through your Radarr. Run it on a trusted network or behind a
   reverse proxy or firewall that restricts access.
 - Your Plex token and Radarr API keys are stored in plaintext JSON
-  (`plex.json`, `radarr.json`) in the config directory with owner-only
+  (`plex.json`, `radarr.json`; manual matches go in `radarr-matches.json`) in the config directory with owner-only
   permissions: `%AppData%\pruneplex` on Windows,
   `~/.config/pruneplex` on Linux, `~/Library/Application Support/pruneplex` on
   macOS. Set `PRUNEPLEX_CONFIG` to the path of `radarr.json` to move them

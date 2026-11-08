@@ -3,6 +3,8 @@ package web
 import (
 	"path/filepath"
 	"testing"
+
+	"pruneplex/internal/radarr"
 )
 
 func TestRadarrMatchStorePersistsManualMatches(t *testing.T) {
@@ -22,5 +24,19 @@ func TestRadarrMatchStorePersistsManualMatches(t *testing.T) {
 	}
 	if _, ok := reloaded.get("hd", key); ok {
 		t.Fatal("matches must be kept per Radarr instance")
+	}
+}
+
+func TestRadarrIdentityKeyMatchesSameFilmAcrossInstances(t *testing.T) {
+	fourK := radarr.Movie{ID: 1, Title: "Dune", Year: 2021, TMDBID: 438631}
+	hd := radarr.Movie{ID: 77, Title: "Dune (2021)", Year: 2021, TMDBID: 438631}
+	if radarrIdentityKey(fourK) != radarrIdentityKey(hd) {
+		t.Fatal("same TMDB ID should identify the same film in both instances")
+	}
+	if radarrIdentityKey(radarr.Movie{IMDBID: "TT123"}) != radarrIdentityKey(radarr.Movie{IMDBID: "tt123"}) {
+		t.Fatal("IMDb IDs should compare case-insensitively")
+	}
+	if radarrIdentityKey(radarr.Movie{Title: "Dune", Year: 1984}) == radarrIdentityKey(radarr.Movie{Title: "Dune", Year: 2021}) {
+		t.Fatal("title-only keys must include the year")
 	}
 }
