@@ -28,6 +28,7 @@ type plexConnector struct {
 	clientID string
 	sessions map[string]*plexSession
 	radarr   *radarrSettingsStore
+	auth     *plexAuthStore
 }
 
 type plexSession struct {
@@ -52,13 +53,103 @@ type serverOption struct {
 }
 
 func newPlexConnector(settings *radarrSettingsStore) *plexConnector {
-	clientID := randomID()
+	auth := newPlexAuthStore(plexAuthPath(settings))
+	clientID := auth.get().ClientID
+	if clientID == "" {
+		clientID = randomID()
+		if err := auth.update(func(a *plexAuth) { a.ClientID = clientID }); err != nil {
+			log.Printf("Could not persist Plex client ID: %v", err)
+		}
+	}
 	return &plexConnector{
 		client:   plex.NewClient(&http.Client{Timeout: 30 * time.Second}, clientID),
 		clientID: clientID,
 		sessions: make(map[string]*plexSession),
 		radarr:   settings,
+		auth:     auth,
 	}
+}
+
+func (c *plexConnector) persistAuth(fn func(*plexAuth)) {
+	if err := c.auth.update(fn); err != nil {
+		log.Printf("Could not persist Plex auth: %v", err)
+	}
+}
+
+// restoreServer reconnects to the previously selected server using the
+// persisted account token. If Plex rejects the token, the saved auth is
+// discarded so the user is prompted to sign in again.
+func (c *plexConnector) restoreServer(ctx context.Context, session *plexSession) {
+	saved := c.auth.get()
+	c.mu.Lock()
+	token, needServers := session.accountToken, session.servers == nil
+	c.mu.Unlock()
+	if token == "" {
+		return
+	}
+	if needServers {
+		servers, err := c.client.Resources(ctx, token)
+		if err != nil {
+			if strings.Contains(err.Error(), "(401") {
+				c.persistAuth(func(a *plexAuth) { a.AccountToken, a.ServerID = "", "" })
+				c.mu.Lock()
+				session.accountToken, session.servers = "", nil
+				c.mu.Unlock()
+			}
+			return
+		}
+		c.mu.Lock()
+		session.servers = servers
+		c.mu.Unlock()
+	}
+	if saved.ServerID == "" {
+		return
+	}
+	c.mu.Lock()
+	var resource *plex.Resource
+	for index := range session.servers {
+		if session.servers[index].ClientID == saved.ServerID {
+			copy := session.servers[index]
+			resource = &copy
+			break
+		}
+	}
+	c.mu.Unlock()
+	if resource == nil {
+		return
+	}
+	if server := c.connectResource(ctx, resource); server != nil {
+		c.mu.Lock()
+		session.selected = server
+		c.mu.Unlock()
+	}
+}
+
+// connectResource tries each of the resource's connections (direct before
+// relay, local first) and returns the first one that verifies.
+func (c *plexConnector) connectResource(ctx context.Context, resource *plex.Resource) *connectedServer {
+	connections := append([]plex.Connection(nil), resource.Connections...)
+	sort.SliceStable(connections, func(i, j int) bool {
+		if connections[i].Relay != connections[j].Relay {
+			return !connections[i].Relay
+		}
+		if connections[i].Local != connections[j].Local {
+			return connections[i].Local
+		}
+		return false
+	})
+	for _, connection := range connections {
+		if err := c.client.VerifyServer(ctx, connection.URI, resource.AccessToken, resource.ClientID); err != nil {
+			continue
+		}
+		return &connectedServer{
+			id:      resource.ClientID,
+			name:    resource.Name,
+			baseURL: connection.URI,
+			token:   resource.AccessToken,
+		}
+	}
+	return nil
 }
 
 func (c *plexConnector) register(mux *http.ServeMux) {
@@ -79,6 +170,13 @@ func (c *plexConnector) status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.mu.Lock()
+	c.mu.Lock()
+	needRestore := session.selected == nil && session.accountToken != "" && session.pinID == 0
+	c.mu.Unlock()
+	if needRestore {
+		c.restoreServer(r.Context(), session)
+	}
+
 	selected := session.selected
 	accountToken := session.accountToken
 	servers := append([]plex.Resource(nil), session.servers...)
@@ -147,6 +245,7 @@ func (c *plexConnector) authStatus(w http.ResponseWriter, r *http.Request) {
 			accountToken = session.accountToken
 			c.mu.Unlock()
 		}
+			c.persistAuth(func(a *plexAuth) { a.AccountToken, a.ServerID = pinStatus.AuthToken, "" })
 	}
 
 	if accountToken == "" {
@@ -210,36 +309,21 @@ func (c *plexConnector) selectServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	connections := append([]plex.Connection(nil), resource.Connections...)
-	sort.SliceStable(connections, func(i, j int) bool {
-		if connections[i].Relay != connections[j].Relay {
-			return !connections[i].Relay
-		}
-		if connections[i].Local != connections[j].Local {
-			return connections[i].Local
-		}
-		return false
-	})
-	for _, connection := range connections {
-		if err := c.client.VerifyServer(r.Context(), connection.URI, resource.AccessToken, resource.ClientID); err != nil {
-			continue
-		}
-		c.mu.Lock()
-		session.selected = &connectedServer{
-			id:      resource.ClientID,
-			name:    resource.Name,
-			baseURL: connection.URI,
-			token:   resource.AccessToken,
-		}
-		c.mu.Unlock()
-		writeJSON(w, http.StatusOK, map[string]any{"connected": true, "serverName": resource.Name})
+	server := c.connectResource(r.Context(), resource)
+	if server == nil {
+		writeAPIError(w, http.StatusBadGateway, "Could not reach that Plex server")
 		return
 	}
-	writeAPIError(w, http.StatusBadGateway, "Could not reach that Plex server")
+	c.mu.Lock()
+	session.selected = server
+	c.mu.Unlock()
+	c.persistAuth(func(a *plexAuth) { a.ServerID = resource.ClientID })
+	writeJSON(w, http.StatusOK, map[string]any{"connected": true, "serverName": resource.Name})
 }
 
 func (c *plexConnector) disconnect(w http.ResponseWriter, r *http.Request) {
 	if sessionID := cookieValue(r); sessionID != "" {
+	c.persistAuth(func(a *plexAuth) { a.AccountToken, a.ServerID = "", "" })
 		c.mu.Lock()
 		delete(c.sessions, sessionID)
 		c.mu.Unlock()
@@ -451,11 +535,13 @@ func (c *plexConnector) getSession(w http.ResponseWriter, r *http.Request, creat
 			return session, id
 		}
 	}
-	if !create {
+	saved := c.auth.get()
+	if !create && saved.AccountToken == "" {
 		return nil, ""
 	}
 	id := randomID()
-	session := &plexSession{}
+	// A fresh session (new browser or app restart) inherits the persisted login.
+	session := &plexSession{accountToken: saved.AccountToken}
 	c.mu.Lock()
 	c.sessions[id] = session
 	c.mu.Unlock()
