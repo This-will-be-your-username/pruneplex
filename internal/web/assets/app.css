@@ -349,3 +349,14 @@ td.is-top-4k {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
+
+/* Tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-top: 8px; overflow-x: auto; }
+.tab {
+  background: none; border: 0; border-bottom: 2px solid transparent; color: #aaa;
+  padding: 12px 14px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.tab:hover { color: #fff; }
+.tab.active { color: #fff; border-bottom-color: currentColor; }
+.tab-count { margin-left: 6px; color: #aaa; font: 10px var(--mono); }
+.tab-panel[hidden] { display: none; }

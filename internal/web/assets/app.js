@@ -2,6 +2,7 @@ const doc = typeof document !== 'undefined' ? document : null;
 const connectButton = doc?.querySelector('#plex-connect');
 const disconnectButton = doc?.querySelector('#plex-disconnect');
 const analyzeButton = doc?.querySelector('#plex-analyze');
+const librarySelect = doc?.querySelector('#plex-library-select');
 const message = doc?.querySelector('#plex-message');
 const serverPicker = doc?.querySelector('#plex-server-picker');
 const serverSelect = doc?.querySelector('#plex-server-select');
@@ -50,12 +51,45 @@ function showServerChoices(servers) {
   showMessage('Plex account authorized. Choose a server to continue.');
 }
 
+const LIBRARY_KEY = 'pruneplex.library';
+
+async function loadLibraries() {
+  if (!librarySelect) return;
+  try {
+    const { libraries } = await request('/api/plex/libraries');
+    librarySelect.replaceChildren();
+    if (libraries.length !== 1) {
+      const all = document.createElement('option');
+      all.value = '';
+      all.textContent = 'All movie libraries';
+      librarySelect.append(all);
+    }
+    for (const library of libraries) {
+      const option = document.createElement('option');
+      option.value = library.key;
+      option.textContent = library.title;
+      librarySelect.append(option);
+    }
+    let saved = '';
+    try { saved = localStorage.getItem(LIBRARY_KEY) || ''; } catch {}
+    if (Array.from(librarySelect.options).some((o) => o.value === saved)) librarySelect.value = saved;
+    librarySelect.hidden = false;
+  } catch (error) {
+    showMessage(error.message, 'error');
+  }
+}
+
+librarySelect?.addEventListener('change', () => {
+  try { localStorage.setItem(LIBRARY_KEY, librarySelect.value); } catch {}
+});
+
 function showConnected(serverName) {
   if (serverPicker) serverPicker.hidden = true;
   if (connectButton) connectButton.hidden = true;
   if (disconnectButton) disconnectButton.hidden = false;
   if (analyzeButton) analyzeButton.disabled = false;
   showMessage(`Connected to ${serverName}.`, 'success');
+  loadLibraries();
 }
 
 async function refreshStatus() {
@@ -128,6 +162,7 @@ disconnectButton?.addEventListener('click', async () => {
   if (connectButton) connectButton.hidden = false;
   if (disconnectButton) disconnectButton.hidden = true;
   if (analyzeButton) analyzeButton.disabled = true;
+  if (librarySelect) librarySelect.hidden = true;
   if (serverPicker) serverPicker.hidden = true;
   if (results) results.hidden = true;
   if (highlightInfo) highlightInfo.hidden = true;
@@ -141,7 +176,10 @@ analyzeButton?.addEventListener('click', async () => {
   analyzeButton.classList.add('loading');
   showMessage('Scanning movie libraries…');
   try {
-    const analysis = await request('/api/plex/analyze', { method: 'POST' });
+    const analysis = await request('/api/plex/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ library: librarySelect?.value ?? '' }),
+    });
     renderResults(analysis);
     showMessage('Movie scan complete.', 'success');
   } catch (error) {
@@ -272,11 +310,42 @@ function renderResults(analysis) {
   if (emptyResults) {
     emptyResults.hidden = analysis.matches.length !== 0;
   }
-  const tableScroll = doc?.querySelector('.table-scroll');
+  const tableScroll = doc?.querySelector('#panel-multi .table-scroll');
   if (tableScroll) {
     tableScroll.hidden = analysis.matches.length === 0;
   }
   for (const [index, movie] of analysis.matches.entries()) {
+    resultsBody.append(buildRow(movie, index, ['4k', 'hd']));
+  }
+  renderSingleResolution('only4k', analysis.only4k || []);
+  renderSingleResolution('onlyhd', analysis.onlyHd || []);
+  renderSingleResolution('other', analysis.other || []);
+  setText('#count-multi', analysis.matches.length);
+  if (results) results.hidden = false;
+  if (filterContainer) filterContainer.hidden = false;
+}
+
+function setText(selector, value) {
+  const el = doc?.querySelector(selector);
+  if (el) el.textContent = String(value);
+}
+
+function renderSingleResolution(prefix, movies) {
+  const body = doc?.querySelector(`#${prefix}-body`);
+  if (!body) return;
+  body.replaceChildren();
+  for (const [index, movie] of movies.entries()) {
+    body.append(buildRow(movie, index, ['4k', 'hd']));
+  }
+  setText(`#${prefix}-result-count`, `${movies.length} movies`);
+  setText(`#count-${prefix}`, movies.length);
+  const empty = doc.querySelector(`#${prefix}-empty`);
+  if (empty) empty.hidden = movies.length !== 0;
+  const table = doc.querySelector(`#${prefix}-table`);
+  if (table) table.hidden = movies.length === 0;
+}
+
+function buildRow(movie, index, qualities) {
     const row = document.createElement('tr');
     const fourKSize = get4KSize(movie);
     if (fourKSize > 0) {
@@ -348,12 +417,37 @@ function renderResults(analysis) {
     }
     resolutionCell.append(resolutionList);
     row.append(titleCell, ratingsCell, resolutionCell);
-    row.append(createRadarrCell(movie, '4k'), createRadarrCell(movie, 'hd'));
-    resultsBody.append(row);
-  }
-  if (results) results.hidden = false;
-  if (filterContainer) filterContainer.hidden = false;
+    for (const quality of qualities) row.append(createRadarrCell(movie, quality));
+    return row;
 }
+
+// --- Tabs ---
+
+function activateTab(name) {
+  for (const tab of doc?.querySelectorAll('.tab') ?? []) {
+    const active = tab.dataset.tab === name;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+  }
+  for (const panel of doc?.querySelectorAll('.tab-panel') ?? []) {
+    panel.hidden = panel.id !== `panel-${name}`;
+  }
+}
+
+doc?.querySelector('.tabs')?.addEventListener('click', (event) => {
+  const tab = event.target.closest('.tab');
+  if (tab) activateTab(tab.dataset.tab);
+});
+
+doc?.querySelector('.tabs')?.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+  const tabs = Array.from(doc.querySelectorAll('.tab'));
+  const current = tabs.findIndex((t) => t.classList.contains('active'));
+  const next = tabs[(current + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+  activateTab(next.dataset.tab);
+  next.focus();
+});
 
 // --- Ratings UI ---
 

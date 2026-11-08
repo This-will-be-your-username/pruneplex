@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -67,6 +68,9 @@ type Movie struct {
 type Analysis struct {
 	Scanned int     `json:"scanned"`
 	Matches []Movie `json:"matches"`
+	Only4K  []Movie `json:"only4k"`
+	OnlyHD  []Movie `json:"onlyHd"`
+	Other   []Movie `json:"other"`
 }
 
 func NewClient(httpClient *http.Client, clientID string) *Client {
@@ -171,14 +175,21 @@ func (c *Client) VerifyServer(ctx context.Context, baseURL, token, expectedID st
 	return nil
 }
 
-func (c *Client) AnalyzeMovies(ctx context.Context, baseURL, token string) (Analysis, error) {
+// Library is a Plex movie library (section).
+type Library struct {
+	Key   string `json:"key"`
+	Title string `json:"title"`
+}
+
+// MovieLibraries lists the server's movie libraries.
+func (c *Client) MovieLibraries(ctx context.Context, baseURL, token string) ([]Library, error) {
 	endpoint, err := serverEndpoint(baseURL, "/library/sections")
 	if err != nil {
-		return Analysis{}, err
+		return nil, err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return Analysis{}, err
+		return nil, err
 	}
 	c.setPlexHeaders(request)
 	request.Header.Set("X-Plex-Token", token)
@@ -193,14 +204,41 @@ func (c *Client) AnalyzeMovies(ctx context.Context, baseURL, token string) (Anal
 		} `json:"MediaContainer"`
 	}
 	if err := c.doJSON(request, &sections); err != nil {
+		return nil, err
+	}
+	var libraries []Library
+	for _, section := range sections.MediaContainer.Directory {
+		if section.Type == "movie" {
+			libraries = append(libraries, Library{Key: section.Key, Title: section.Title})
+		}
+	}
+	return libraries, nil
+}
+
+// ErrUnknownLibrary is returned when the requested library key does not exist.
+var ErrUnknownLibrary = errors.New("unknown Plex library")
+
+// AnalyzeMovies scans one movie library, or all of them when libraryKey is empty.
+func (c *Client) AnalyzeMovies(ctx context.Context, baseURL, token, libraryKey string) (Analysis, error) {
+	libraries, err := c.MovieLibraries(ctx, baseURL, token)
+	if err != nil {
 		return Analysis{}, err
+	}
+	if libraryKey != "" {
+		var selected []Library
+		for _, library := range libraries {
+			if library.Key == libraryKey {
+				selected = append(selected, library)
+			}
+		}
+		if len(selected) == 0 {
+			return Analysis{}, ErrUnknownLibrary
+		}
+		libraries = selected
 	}
 
 	var result Analysis
-	for _, section := range sections.MediaContainer.Directory {
-		if section.Type != "movie" {
-			continue
-		}
+	for _, section := range libraries {
 		sectionID := url.PathEscape(section.Key)
 		start := 0
 		for {
@@ -211,19 +249,27 @@ func (c *Client) AnalyzeMovies(ctx context.Context, baseURL, token string) (Anal
 			result.Scanned += len(movies)
 			for _, movie := range movies {
 				resolutions := uniqueResolutions(movie.Media)
-				if hasMixed4K(resolutions) {
-					tmdbID, imdbID := parseExternalIDs(movie.Guids)
-					result.Matches = append(result.Matches, Movie{
-						Title:          movie.Title,
-						Year:           movie.Year,
-						Thumb:          movie.Thumb,
-						Library:        section.Title,
-						Ratings:        consolidateRatings(movie),
-						Resolutions:    resolutions,
-						TMDBID:         tmdbID,
-						IMDBID:         imdbID,
-						FourKSizeBytes: extract4KSize(movie.Media),
-					})
+				tmdbID, imdbID := parseExternalIDs(movie.Guids)
+				item := Movie{
+					Title:          movie.Title,
+					Year:           movie.Year,
+					Thumb:          movie.Thumb,
+					Library:        section.Title,
+					Ratings:        consolidateRatings(movie),
+					Resolutions:    resolutions,
+					TMDBID:         tmdbID,
+					IMDBID:         imdbID,
+					FourKSizeBytes: extract4KSize(movie.Media),
+				}
+				switch {
+				case hasMixed4K(resolutions):
+					result.Matches = append(result.Matches, item)
+				case distinctResolutions(resolutions) != 1:
+					result.Other = append(result.Other, item)
+				case is4K(resolutions[0]):
+					result.Only4K = append(result.Only4K, item)
+				default:
+					result.OnlyHD = append(result.OnlyHD, item)
 				}
 			}
 			if len(movies) == 0 || (totalSize > 0 && start+len(movies) >= totalSize) {
@@ -232,13 +278,19 @@ func (c *Client) AnalyzeMovies(ctx context.Context, baseURL, token string) (Anal
 			start += len(movies)
 		}
 	}
-	sort.Slice(result.Matches, func(i, j int) bool {
-		if result.Matches[i].Title == result.Matches[j].Title {
-			return result.Matches[i].Year < result.Matches[j].Year
-		}
-		return strings.ToLower(result.Matches[i].Title) < strings.ToLower(result.Matches[j].Title)
-	})
+	for _, list := range [][]Movie{result.Matches, result.Only4K, result.OnlyHD, result.Other} {
+		sortMovies(list)
+	}
 	return result, nil
+}
+
+func sortMovies(movies []Movie) {
+	sort.Slice(movies, func(i, j int) bool {
+		if movies[i].Title == movies[j].Title {
+			return movies[i].Year < movies[j].Year
+		}
+		return strings.ToLower(movies[i].Title) < strings.ToLower(movies[j].Title)
+	})
 }
 
 type mediaItem struct {
@@ -632,4 +684,18 @@ func (c *Client) doJSON(request *http.Request, destination any) error {
 		return fmt.Errorf("decode Plex response: %w", err)
 	}
 	return nil
+}
+
+// distinctResolutions counts resolutions, treating every 4K spelling
+// ("4k", "2160", "2160p") as the same resolution.
+func distinctResolutions(resolutions []string) int {
+	seen := make(map[string]bool)
+	for _, resolution := range resolutions {
+		if is4K(resolution) {
+			seen["4k"] = true
+		} else {
+			seen[strings.ToLower(strings.TrimSpace(resolution))] = true
+		}
+	}
+	return len(seen)
 }

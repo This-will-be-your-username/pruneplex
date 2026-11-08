@@ -41,6 +41,7 @@
             <div class="plex-actions">
               <button class="button button-secondary" id="plex-connect" type="button">Connect Plex</button>
               <button class="button button-secondary" id="plex-disconnect" type="button" hidden>Disconnect</button>
+              <select id="plex-library-select" class="button button-secondary" aria-label="Library to analyze" hidden></select>
               <button class="button button-primary" id="plex-analyze" type="button" disabled>Analyze movies</button>
             </div>
           </div>
@@ -51,34 +52,85 @@
             <button class="button button-primary" id="plex-server-connect" type="button">Use this server</button>
           </div>
           <div class="results" id="plex-results" hidden>
-            <div class="results-heading">
-              <div>
-                <h3>Movies with multiple resolutions</h3>
-                <span class="highlight-info" id="plex-highlight-info" hidden></span>
-              </div>
-              <div class="results-heading-actions">
-                <div class="filter-container" id="filter-container" hidden>
-                  <select id="filter-select" class="button button-secondary button-sm">
-                    <option value="" disabled selected>Select filter</option>
-                    <option value="top20_4k">Top 20% 4K file size</option>
-                    <option value="top20_hd">Top 20% HD file size</option>
-                    <option value="lowest_20_rated">20% lowest rated movies</option>
-                    <option value="hd_gt_fourk">HD larger than 4K</option>
-                    <option value="fourk_within_10_hd">4K within 10% of HD size</option>
-                  </select>
-                  <button class="button button-primary button-sm" id="apply-filter-btn" type="button">Apply</button>
-                  <button class="button button-secondary button-sm" id="clear-filter-btn" type="button">Clear</button>
+            <div class="tabs" role="tablist" aria-label="Movie categories">
+              <button class="tab active" id="tab-multi" type="button" role="tab" aria-selected="true" aria-controls="panel-multi" data-tab="multi">Multiple resolutions <span class="tab-count" id="count-multi"></span></button>
+              <button class="tab" id="tab-only4k" type="button" role="tab" aria-selected="false" aria-controls="panel-only4k" data-tab="only4k" tabindex="-1">Only 4K <span class="tab-count" id="count-only4k"></span></button>
+              <button class="tab" id="tab-onlyhd" type="button" role="tab" aria-selected="false" aria-controls="panel-onlyhd" data-tab="onlyhd" tabindex="-1">Only HD <span class="tab-count" id="count-onlyhd"></span></button>
+              <button class="tab" id="tab-other" type="button" role="tab" aria-selected="false" aria-controls="panel-other" data-tab="other" tabindex="-1">Other <span class="tab-count" id="count-other"></span></button>
+            </div>
+
+            <div class="tab-panel" id="panel-multi" role="tabpanel" aria-labelledby="tab-multi">
+              <div class="results-heading">
+                <div>
+                  <h3>Movies with multiple resolutions</h3>
+                  <span class="highlight-info" id="plex-highlight-info" hidden></span>
                 </div>
-                <span id="plex-result-count"></span>
+                <div class="results-heading-actions">
+                  <div class="filter-container" id="filter-container" hidden>
+                    <select id="filter-select" class="button button-secondary button-sm">
+                      <option value="" disabled selected>Select filter</option>
+                      <option value="top20_4k">Top 20% 4K file size</option>
+                      <option value="top20_hd">Top 20% HD file size</option>
+                      <option value="lowest_20_rated">20% lowest rated movies</option>
+                      <option value="hd_gt_fourk">HD larger than 4K</option>
+                      <option value="fourk_within_10_hd">4K within 10% of HD size</option>
+                    </select>
+                    <button class="button button-primary button-sm" id="apply-filter-btn" type="button">Apply</button>
+                    <button class="button button-secondary button-sm" id="clear-filter-btn" type="button">Clear</button>
+                  </div>
+                  <span id="plex-result-count"></span>
+                </div>
               </div>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th scope="col">Movie</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">4K Radarr</th><th scope="col">HD Radarr</th></tr></thead>
+                  <tbody id="plex-results-body"></tbody>
+                </table>
+              </div>
+              <p class="empty-results" id="plex-empty-results" hidden>No movies with both 4K and another resolution were found.</p>
             </div>
-            <div class="table-scroll">
-              <table>
-                <thead><tr><th scope="col">Movie</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">4K Radarr</th><th scope="col">HD Radarr</th></tr></thead>
-                <tbody id="plex-results-body"></tbody>
-              </table>
+
+            <div class="tab-panel" id="panel-only4k" role="tabpanel" aria-labelledby="tab-only4k" hidden>
+              <div class="results-heading">
+                <h3>Movies with only a 4K version</h3>
+                <span id="only4k-result-count"></span>
+              </div>
+              <div class="table-scroll" id="only4k-table">
+                <table>
+                  <thead><tr><th scope="col">Movie</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">4K Radarr</th><th scope="col">HD Radarr</th></tr></thead>
+                  <tbody id="only4k-body"></tbody>
+                </table>
+              </div>
+              <p class="empty-results" id="only4k-empty" hidden>No movies with only a 4K version were found.</p>
             </div>
-            <p class="empty-results" id="plex-empty-results" hidden>No movies with both 4K and another resolution were found.</p>
+
+            <div class="tab-panel" id="panel-onlyhd" role="tabpanel" aria-labelledby="tab-onlyhd" hidden>
+              <div class="results-heading">
+                <h3>Movies with only an HD version</h3>
+                <span id="onlyhd-result-count"></span>
+              </div>
+              <div class="table-scroll" id="onlyhd-table">
+                <table>
+                  <thead><tr><th scope="col">Movie</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">4K Radarr</th><th scope="col">HD Radarr</th></tr></thead>
+                  <tbody id="onlyhd-body"></tbody>
+                </table>
+              </div>
+              <p class="empty-results" id="onlyhd-empty" hidden>No movies with only an HD version were found.</p>
+            </div>
+
+            <div class="tab-panel" id="panel-other" role="tabpanel" aria-labelledby="tab-other" hidden>
+              <div class="results-heading">
+                <h3>Other movies (several non-4K versions, or no resolution data)</h3>
+                <span id="other-result-count"></span>
+              </div>
+              <div class="table-scroll" id="other-table">
+                <table>
+                  <thead><tr><th scope="col">Movie</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">4K Radarr</th><th scope="col">HD Radarr</th></tr></thead>
+                  <tbody id="other-body"></tbody>
+                </table>
+              </div>
+              <p class="empty-results" id="other-empty" hidden>No other movies were found.</p>
+            </div>
           </div>
         </section>
 

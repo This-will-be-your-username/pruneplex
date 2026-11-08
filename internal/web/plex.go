@@ -158,6 +158,7 @@ func (c *plexConnector) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/plex/auth/status", c.authStatus)
 	mux.HandleFunc("POST /api/plex/server", c.selectServer)
 	mux.HandleFunc("POST /api/plex/disconnect", c.disconnect)
+	mux.HandleFunc("GET /api/plex/libraries", c.libraries)
 	mux.HandleFunc("POST /api/plex/analyze", c.analyze)
 	mux.HandleFunc("GET /api/plex/thumb", c.thumb)
 }
@@ -170,13 +171,13 @@ func (c *plexConnector) status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c.mu.Lock()
-	c.mu.Lock()
 	needRestore := session.selected == nil && session.accountToken != "" && session.pinID == 0
 	c.mu.Unlock()
 	if needRestore {
 		c.restoreServer(r.Context(), session)
 	}
 
+	c.mu.Lock()
 	selected := session.selected
 	accountToken := session.accountToken
 	servers := append([]plex.Resource(nil), session.servers...)
@@ -244,8 +245,8 @@ func (c *plexConnector) authStatus(w http.ResponseWriter, r *http.Request) {
 			session.pinCode = ""
 			accountToken = session.accountToken
 			c.mu.Unlock()
-		}
 			c.persistAuth(func(a *plexAuth) { a.AccountToken, a.ServerID = pinStatus.AuthToken, "" })
+		}
 	}
 
 	if accountToken == "" {
@@ -322,8 +323,8 @@ func (c *plexConnector) selectServer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *plexConnector) disconnect(w http.ResponseWriter, r *http.Request) {
-	if sessionID := cookieValue(r); sessionID != "" {
 	c.persistAuth(func(a *plexAuth) { a.AccountToken, a.ServerID = "", "" })
+	if sessionID := cookieValue(r); sessionID != "" {
 		c.mu.Lock()
 		delete(c.sessions, sessionID)
 		c.mu.Unlock()
@@ -339,25 +340,57 @@ func (c *plexConnector) disconnect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"connected": false})
 }
 
-func (c *plexConnector) analyze(w http.ResponseWriter, r *http.Request) {
+func (c *plexConnector) connectedServerFor(w http.ResponseWriter, r *http.Request) *connectedServer {
 	session, _ := c.getSession(w, r, false)
-	if session == nil {
-		writeAPIError(w, http.StatusUnauthorized, "Authenticate with Plex and select a server first")
+	if session != nil {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if session.selected != nil {
+			copy := *session.selected
+			return &copy
+		}
+	}
+	writeAPIError(w, http.StatusUnauthorized, "Authenticate with Plex and select a server first")
+	return nil
+}
+
+func (c *plexConnector) libraries(w http.ResponseWriter, r *http.Request) {
+	server := c.connectedServerFor(w, r)
+	if server == nil {
 		return
 	}
-	c.mu.Lock()
-	var server *connectedServer
-	if session.selected != nil {
-		copy := *session.selected
-		server = &copy
+	libraries, err := c.client.MovieLibraries(r.Context(), server.baseURL, server.token)
+	if err != nil {
+		log.Printf("Plex library listing failed: %v", err)
+		writeAPIError(w, http.StatusBadGateway, "Could not list Plex movie libraries")
+		return
 	}
-	c.mu.Unlock()
+	if libraries == nil {
+		libraries = []plex.Library{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"libraries": libraries})
+}
+
+func (c *plexConnector) analyze(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Library string `json:"library"`
+	}
+	if r.ContentLength != 0 {
+		if err := decodeJSON(w, r, &input); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "Invalid analysis request")
+			return
+		}
+	}
+	server := c.connectedServerFor(w, r)
 	if server == nil {
-		writeAPIError(w, http.StatusUnauthorized, "Authenticate with Plex and select a server first")
 		return
 	}
 
-	result, err := c.client.AnalyzeMovies(r.Context(), server.baseURL, server.token)
+	result, err := c.client.AnalyzeMovies(r.Context(), server.baseURL, server.token, input.Library)
+	if errors.Is(err, plex.ErrUnknownLibrary) {
+		writeAPIError(w, http.StatusBadRequest, "That Plex library is not available")
+		return
+	}
 	if err != nil {
 		log.Printf("Plex movie analysis failed: %v", err)
 		writeAPIError(w, http.StatusBadGateway, "Plex movie analysis failed")
@@ -378,21 +411,31 @@ func (c *plexConnector) analyze(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadGateway, "Could not read the HD Radarr library")
 		return
 	}
-	response := analysisResponse{Scanned: result.Scanned, Matches: make([]analyzedMovie, 0, len(result.Matches))}
-	for _, movie := range result.Matches {
-		match := analyzedMovie{
-			Movie:              movie,
-			Radarr4KConfigured: settings.FourK.APIKey != "",
-			RadarrHDConfigured: settings.HD.APIKey != "",
+	enrich := func(movies []plex.Movie) []analyzedMovie {
+		out := make([]analyzedMovie, 0, len(movies))
+		for _, movie := range movies {
+			match := analyzedMovie{
+				Movie:              movie,
+				Radarr4KConfigured: settings.FourK.APIKey != "",
+				RadarrHDConfigured: settings.HD.APIKey != "",
+			}
+			identity := radarr.Identity{Title: movie.Title, Year: movie.Year, TMDBID: movie.TMDBID, IMDBID: movie.IMDBID}
+			if radarrMovie, ok := radarr.FindMovie(identity, fourKMovies); ok {
+				match.Radarr4K = &radarrMovieMatch{ID: radarrMovie.ID, Title: radarrMovie.Title, Year: radarrMovie.Year, SizeBytes: radarrMovie.SizeOnDisk}
+			}
+			if radarrMovie, ok := radarr.FindMovie(identity, hdMovies); ok {
+				match.RadarrHD = &radarrMovieMatch{ID: radarrMovie.ID, Title: radarrMovie.Title, Year: radarrMovie.Year, SizeBytes: radarrMovie.SizeOnDisk}
+			}
+			out = append(out, match)
 		}
-		identity := radarr.Identity{Title: movie.Title, Year: movie.Year, TMDBID: movie.TMDBID, IMDBID: movie.IMDBID}
-		if radarrMovie, ok := radarr.FindMovie(identity, fourKMovies); ok {
-			match.Radarr4K = &radarrMovieMatch{ID: radarrMovie.ID, Title: radarrMovie.Title, Year: radarrMovie.Year, SizeBytes: radarrMovie.SizeOnDisk}
-		}
-		if radarrMovie, ok := radarr.FindMovie(identity, hdMovies); ok {
-			match.RadarrHD = &radarrMovieMatch{ID: radarrMovie.ID, Title: radarrMovie.Title, Year: radarrMovie.Year, SizeBytes: radarrMovie.SizeOnDisk}
-		}
-		response.Matches = append(response.Matches, match)
+		return out
+	}
+	response := analysisResponse{
+		Scanned: result.Scanned,
+		Matches: enrich(result.Matches),
+		Only4K:  enrich(result.Only4K),
+		OnlyHD:  enrich(result.OnlyHD),
+		Other:   enrich(result.Other),
 	}
 	response.Matches = HighlightTop4KVideos(response.Matches)
 	writeJSON(w, http.StatusOK, response)
@@ -455,6 +498,9 @@ func (c *plexConnector) thumb(w http.ResponseWriter, r *http.Request) {
 type analysisResponse struct {
 	Scanned int             `json:"scanned"`
 	Matches []analyzedMovie `json:"matches"`
+	Only4K  []analyzedMovie `json:"only4k"`
+	OnlyHD  []analyzedMovie `json:"onlyHd"`
+	Other   []analyzedMovie `json:"other"`
 }
 
 type analyzedMovie struct {

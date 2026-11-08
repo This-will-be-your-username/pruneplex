@@ -3,6 +3,7 @@ package plex
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -72,7 +73,7 @@ func TestAnalyzeMoviesFindsMixed4KVersions(t *testing.T) {
 			if r.URL.Query().Get("type") != "1" || r.Header.Get("X-Plex-Container-Start") != "0" || r.Header.Get("X-Plex-Container-Size") != "500" {
 				t.Fatalf("missing movie query or paging headers")
 			}
-			fmt.Fprint(w, `{"MediaContainer":{"totalSize":3,"Metadata":[{"title":"Both Versions","year":2020,"thumb":"/library/metadata/101/thumb/123","Rating":[{"image":"rottentomatoes://image.rating.ripe","value":9.4,"type":"critic"},{"image":"themoviedb://image.rating","value":8.1,"type":"audience"},{"image":"imdb://image.rating","value":8.4,"type":"audience"}],"Guid":[{"id":"tmdb://105"},{"id":"imdb://tt0088763"}],"Media":[{"videoResolution":"4k","Part":[{"size":50000000000}]},{"videoResolution":"1080","Part":[{"size":10000000000}]}]},{"title":"Only 4K","Media":[{"videoResolution":"4k"}]},{"title":"2160 and HD","thumb":"/library/metadata/102/thumb/456","Media":[{"videoResolution":"2160p","size":30000000000},{"videoResolution":"720"}]}]}}`)
+			fmt.Fprint(w, `{"MediaContainer":{"totalSize":5,"Metadata":[{"title":"Both Versions","year":2020,"thumb":"/library/metadata/101/thumb/123","Rating":[{"image":"rottentomatoes://image.rating.ripe","value":9.4,"type":"critic"},{"image":"themoviedb://image.rating","value":8.1,"type":"audience"},{"image":"imdb://image.rating","value":8.4,"type":"audience"}],"Guid":[{"id":"tmdb://105"},{"id":"imdb://tt0088763"}],"Media":[{"videoResolution":"4k","Part":[{"size":50000000000}]},{"videoResolution":"1080","Part":[{"size":10000000000}]}]},{"title":"Only 4K","Media":[{"videoResolution":"4k"}]},{"title":"Only HD","Media":[{"videoResolution":"1080"}]},{"title":"Two HD","Media":[{"videoResolution":"1080"},{"videoResolution":"720"}]},{"title":"2160 and HD","thumb":"/library/metadata/102/thumb/456","Media":[{"videoResolution":"2160p","size":30000000000},{"videoResolution":"720"}]}]}}`)
 		case "/library/metadata/101/thumb/123":
 			w.Header().Set("Content-Type", "image/jpeg")
 			fmt.Fprint(w, "fake-image-bytes")
@@ -83,11 +84,11 @@ func TestAnalyzeMoviesFindsMixed4KVersions(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.Client(), "test-client")
-	result, err := client.AnalyzeMovies(context.Background(), server.URL, "server-token")
+	result, err := client.AnalyzeMovies(context.Background(), server.URL, "server-token", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Scanned != 3 || len(result.Matches) != 2 {
+	if result.Scanned != 5 || len(result.Matches) != 2 || len(result.Only4K) != 1 || len(result.OnlyHD) != 1 || len(result.Other) != 1 || result.Other[0].Title != "Two HD" || result.Only4K[0].Title != "Only 4K" || result.OnlyHD[0].Title != "Only HD" {
 		t.Fatalf("got analysis %+v", result)
 	}
 	if result.Matches[0].Title != "2160 and HD" || result.Matches[1].Title != "Both Versions" {
@@ -130,5 +131,33 @@ func TestServerEndpointRejectsInvalidURLs(t *testing.T) {
 		if _, err := serverEndpoint(input, "/identity"); err == nil {
 			t.Errorf("serverEndpoint(%q) unexpectedly succeeded", input)
 		}
+	}
+}
+
+func TestMovieLibrariesAndLibraryFilter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/library/sections":
+			fmt.Fprint(w, `{"MediaContainer":{"Directory":[{"key":"1","title":"HD","type":"movie"},{"key":"2","title":"4K","type":"movie"},{"key":"3","title":"Shows","type":"show"}]}}`)
+		case "/library/sections/2/all":
+			fmt.Fprint(w, `{"MediaContainer":{"totalSize":1,"Metadata":[{"title":"UHD","Media":[{"videoResolution":"4k"}]}]}}`)
+		default:
+			t.Fatalf("unexpected request %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client(), "test-client")
+	libraries, err := client.MovieLibraries(context.Background(), server.URL, "t")
+	if err != nil || len(libraries) != 2 || libraries[1].Title != "4K" {
+		t.Fatalf("libraries = %+v, err = %v", libraries, err)
+	}
+	result, err := client.AnalyzeMovies(context.Background(), server.URL, "t", "2")
+	if err != nil || result.Scanned != 1 || len(result.Only4K) != 1 {
+		t.Fatalf("result = %+v, err = %v", result, err)
+	}
+	if _, err := client.AnalyzeMovies(context.Background(), server.URL, "t", "9"); !errors.Is(err, ErrUnknownLibrary) {
+		t.Fatalf("expected ErrUnknownLibrary, got %v", err)
 	}
 }
