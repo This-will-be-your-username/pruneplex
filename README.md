@@ -87,10 +87,51 @@ commands work on Windows, macOS and Linux.
 
 ## Running
 
-```sh
-chmod +x pruneplex-linux-amd64          # downloaded release binaries need this on Linux/macOS
-PORT=8081 ./pruneplex-linux-amd64    # PORT defaults to 8081
+Download the binary for your platform from the
+[Releases](https://github.com/This-will-be-your-username/pruneplex/releases)
+page (or build it yourself, see above), then start it and open
+http://localhost:8081. Release files are named
+`pruneplex-<version>-<os>-<arch>`; locally built ones omit the version.
+
+| Platform | `<os>-<arch>` |
+| --- | --- |
+| Windows (Intel/AMD, ARM) | `windows-amd64.exe`, `windows-arm64.exe` |
+| macOS (Apple Silicon, Intel) | `darwin-arm64`, `darwin-amd64` |
+| Linux (Intel/AMD, ARM) | `linux-amd64`, `linux-arm64` |
+
+**Windows (PowerShell)**
+
+```powershell
+$env:PORT = "8081"   # optional, defaults to 8081
+.\pruneplex-windows-amd64.exe
 ```
+
+SmartScreen may warn about an unsigned download: choose *More info*, then
+*Run anyway*.
+
+**macOS**
+
+```sh
+chmod +x pruneplex-darwin-arm64
+xattr -d com.apple.quarantine pruneplex-darwin-arm64   # clear Gatekeeper's block on downloads
+PORT=8081 ./pruneplex-darwin-arm64                     # PORT is optional
+```
+
+**Linux**
+
+```sh
+chmod +x pruneplex-linux-amd64
+PORT=8081 ./pruneplex-linux-amd64                      # PORT is optional
+```
+
+**From source (any platform with Go)**
+
+```sh
+go run ./cmd/server
+```
+
+Stop it with Ctrl+C. Settings and saved logins live in the config directory
+described under [Security](#security).
 
 ## Tests
 
