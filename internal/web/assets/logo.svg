@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="PrunePlex">
+  <!-- A Plex-style chevron whose lower arm has been pruned short. -->
+  <path fill="#f2b632" d="M5 2H11L19.55 11.5H13.55Z"/>
+  <path fill="#bf8100" d="M13.55 12.5H19.55L13.7 19H7.7Z"/>
+</svg>

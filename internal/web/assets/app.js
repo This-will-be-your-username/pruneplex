@@ -19,6 +19,81 @@ const clearFilterBtn = doc?.querySelector('#clear-filter-btn');
 
 let currentAnalysis = null;
 
+// The page heading names the Plex library being analyzed. Until an analysis has
+// run it follows the library dropdown; afterwards it stays on the library that
+// was analyzed, so it always matches the results below it.
+const heading = doc?.querySelector('#status-title');
+const defaultHeading = heading?.textContent ?? '';
+let analyzedLibrary = null;
+
+function selectedLibraryName() {
+  if (!librarySelect || librarySelect.hidden) return null;
+  return librarySelect.selectedOptions?.[0]?.textContent || null;
+}
+
+function updateHeading() {
+  if (heading) heading.textContent = analyzedLibrary ?? selectedLibraryName() ?? defaultHeading;
+}
+
+// The Movies page (Radarr) and the TV Shows page (Sonarr) share this script;
+// <body data-media> says which one we are on.
+const isTV = doc?.body?.dataset?.media === 'tv';
+const MEDIA = isTV
+  ? {
+      noun: 'shows',
+      arr: 'Sonarr',
+      libraryType: 'show',
+      allLibraries: 'All TV libraries',
+      libraryKey: 'pruneplex.library.tv',
+      analyzeURL: '/api/plex/analyze-tv',
+      restoreURL: '/api/plex/analysis-tv',
+      analyzedKey: 'pruneplex.analyzed.tv',
+      removeURL: '/api/sonarr/series/remove',
+      removeBody: (quality, id) => ({ quality, seriesId: id }),
+      removeWhat: 'series and all of its episode files',
+      matching: true,
+      candidatesURL: '/api/sonarr/candidates',
+      matchURL: '/api/sonarr/match',
+      scanning: 'Scanning TV libraries…',
+      done: 'TV scan complete.',
+    }
+  : {
+      noun: 'movies',
+      arr: 'Radarr',
+      libraryType: 'movie',
+      allLibraries: 'All movie libraries',
+      libraryKey: 'pruneplex.library',
+      analyzeURL: '/api/plex/analyze',
+      restoreURL: '/api/plex/analysis',
+      analyzedKey: 'pruneplex.analyzed.movies',
+      removeURL: '/api/radarr/movie/remove',
+      removeBody: (quality, id) => ({ quality, movieId: id }),
+      removeWhat: 'movie files',
+      matching: true,
+      candidatesURL: '/api/radarr/candidates',
+      matchURL: '/api/radarr/match',
+      scanning: 'Scanning movie libraries…',
+      done: 'Movie scan complete.',
+    };
+
+/**
+ * The rendering code below speaks in terms of the movie fields (radarr4k,
+ * radarrHd, ...). TV analyses carry sonarr* fields, so copy them across once
+ * when a response arrives.
+ */
+function normalizeAnalysis(analysis) {
+  if (!isTV) return analysis;
+  for (const list of [analysis.matches, analysis.only4k, analysis.onlyHd, analysis.other]) {
+    for (const item of list || []) {
+      item.radarr4k = item.sonarr4k;
+      item.radarrHd = item.sonarrHd;
+      item.radarr4kConfigured = item.sonarr4kConfigured;
+      item.radarrHdConfigured = item.sonarrHdConfigured;
+    }
+  }
+  return analysis;
+}
+
 async function request(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -51,17 +126,17 @@ function showServerChoices(servers) {
   showMessage('Plex account authorized. Choose a server to continue.');
 }
 
-const LIBRARY_KEY = 'pruneplex.library';
+const LIBRARY_KEY = MEDIA.libraryKey;
 
 async function loadLibraries() {
   if (!librarySelect) return;
   try {
-    const { libraries } = await request('/api/plex/libraries');
+    const { libraries } = await request(`/api/plex/libraries?type=${MEDIA.libraryType}`);
     librarySelect.replaceChildren();
     if (libraries.length !== 1) {
       const all = document.createElement('option');
       all.value = '';
-      all.textContent = 'All movie libraries';
+      all.textContent = MEDIA.allLibraries;
       librarySelect.append(all);
     }
     for (const library of libraries) {
@@ -74,6 +149,7 @@ async function loadLibraries() {
     try { saved = localStorage.getItem(LIBRARY_KEY) || ''; } catch {}
     if (Array.from(librarySelect.options).some((o) => o.value === saved)) librarySelect.value = saved;
     librarySelect.hidden = false;
+    updateHeading();
   } catch (error) {
     showMessage(error.message, 'error');
   }
@@ -81,6 +157,7 @@ async function loadLibraries() {
 
 librarySelect?.addEventListener('change', () => {
   try { localStorage.setItem(LIBRARY_KEY, librarySelect.value); } catch {}
+  updateHeading();
 });
 
 function showConnected(serverName) {
@@ -92,10 +169,29 @@ function showConnected(serverName) {
   loadLibraries();
 }
 
+
+/**
+ * Show the last scan again when the user comes back to this page (the server
+ * keeps it for the session). The server re-matches it against Radarr/Sonarr, so
+ * deletions and manual matches made since are reflected.
+ */
+async function restoreAnalysis() {
+  try {
+    const { analysis } = await request(MEDIA.restoreURL);
+    if (!analysis) return;
+    try { analyzedLibrary = sessionStorage.getItem(MEDIA.analyzedKey); } catch { analyzedLibrary = null; }
+    renderResults(normalizeAnalysis(analysis));
+    updateHeading();
+    showMessage(`Showing your last scan${analyzedLibrary ? ` of ${analyzedLibrary}` : ''}. Click Analyze to refresh it.`);
+  } catch {
+    // No saved scan, or Radarr/Sonarr unreachable: start from a clean page.
+  }
+}
 async function refreshStatus() {
   const state = await request('/api/plex/status');
   if (state.connected) {
     showConnected(state.serverName);
+    restoreAnalysis();
   } else if (state.servers?.length) {
     showServerChoices(state.servers);
   }
@@ -163,6 +259,9 @@ disconnectButton?.addEventListener('click', async () => {
   if (disconnectButton) disconnectButton.hidden = true;
   if (analyzeButton) analyzeButton.disabled = true;
   if (librarySelect) librarySelect.hidden = true;
+  analyzedLibrary = null;
+  try { sessionStorage.removeItem(MEDIA.analyzedKey); } catch {}
+  updateHeading();
   if (serverPicker) serverPicker.hidden = true;
   if (results) results.hidden = true;
   if (highlightInfo) highlightInfo.hidden = true;
@@ -174,14 +273,17 @@ disconnectButton?.addEventListener('click', async () => {
 analyzeButton?.addEventListener('click', async () => {
   analyzeButton.disabled = true;
   analyzeButton.classList.add('loading');
-  showMessage('Scanning movie libraries…');
+  showMessage(MEDIA.scanning);
   try {
-    const analysis = await request('/api/plex/analyze', {
+    const analysis = await request(MEDIA.analyzeURL, {
       method: 'POST',
       body: JSON.stringify({ library: librarySelect?.value ?? '' }),
     });
-    renderResults(analysis);
-    showMessage('Movie scan complete.', 'success');
+    analyzedLibrary = selectedLibraryName();
+    try { if (analyzedLibrary) sessionStorage.setItem(MEDIA.analyzedKey, analyzedLibrary); } catch {}
+    renderResults(normalizeAnalysis(analysis));
+    updateHeading();
+    showMessage(MEDIA.done, 'success');
   } catch (error) {
     showMessage(error.message, 'error');
   } finally {
@@ -305,7 +407,7 @@ function renderResults(analysis) {
   if (!resultsBody) return;
   resultsBody.replaceChildren();
   if (resultCount) {
-    resultCount.textContent = `${analysis.matches.length} matches / ${analysis.scanned.toLocaleString()} movies scanned`;
+    resultCount.textContent = `${analysis.matches.length} matches / ${analysis.scanned.toLocaleString()} ${MEDIA.noun} scanned`;
   }
   if (emptyResults) {
     emptyResults.hidden = analysis.matches.length !== 0;
@@ -403,6 +505,7 @@ function buildRow(movie, index, qualities) {
     }
 
     movieItem.append(posterWrap, movieMeta);
+    if (isTV) movieItem.prepend(createStatusIcon(movie)); // to the left of the poster
     titleCell.append(movieItem);
     const ratingsCell = createRatingsCell(movie);
     const resolutionCell = document.createElement('td');
@@ -412,7 +515,8 @@ function buildRow(movie, index, qualities) {
     for (const resolution of movie.resolutions) {
       const tag = document.createElement('span');
       tag.className = `resolution-tag${is4K(resolution) ? ' is-4k' : ''}`;
-      tag.textContent = resolution;
+      const episodes = movie.resolutionEpisodes?.[resolution];
+      tag.textContent = episodes ? `${resolution} · ${episodes} ep${episodes === 1 ? '' : 's'}` : resolution;
       resolutionList.append(tag);
     }
     resolutionCell.append(resolutionList);
@@ -585,7 +689,7 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
   }
   const configured = is4KInstance ? movie.radarr4kConfigured : movie.radarrHdConfigured;
   const match = is4KInstance ? movie.radarr4k : movie.radarrHd;
-  const label = is4KInstance ? '4K Radarr' : 'HD Radarr';
+  const label = `${is4KInstance ? '4K' : 'HD'} ${MEDIA.arr}`;
   if (!configured) {
     const link = document.createElement('a');
     link.href = '/settings';
@@ -607,7 +711,7 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
     // One picker per row fixes every unmatched instance, so only the first
     // unmatched column shows the button (the 4K column when it needs a match).
     const fourKNeedsMatch = columns.includes('4k') && movie.radarr4kConfigured && !movie.radarr4k;
-    if (!is4KInstance && fourKNeedsMatch) {
+    if (!MEDIA.matching || (!is4KInstance && fourKNeedsMatch)) {
       cell.append(wrap(label));
       return cell;
     }
@@ -641,21 +745,24 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
   matchSizeText.className = 'radarr-match-size-text';
   matchSizeText.textContent = formatFileSize(match.sizeBytes);
   matchSize.append(matchSizeText);
+  const ring = isTV ? createCompletenessRing(match) : null;
+  if (ring) matchSize.append(ring);
 
   const button = document.createElement('button');
   button.className = 'button button-danger radarr-remove-button';
   button.type = 'button';
   button.textContent = `Delete ${is4KInstance ? '4K' : 'HD'}`;
   button.addEventListener('click', async () => {
-    if (!window.confirm(`Remove ${match.title} from ${label} and delete its movie files? This cannot be undone here.`)) return;
+    if (!window.confirm(`Remove ${match.title} from ${label} and delete its ${MEDIA.removeWhat}? This cannot be undone here.`)) return;
     button.disabled = true;
     button.textContent = 'Removing…';
     try {
-      await request('/api/radarr/movie/remove', {
+      await request(MEDIA.removeURL, {
         method: 'POST',
-        body: JSON.stringify({ quality, movieId: match.id }),
+        body: JSON.stringify(MEDIA.removeBody(quality, match.id)),
       });
       matchTitle.textContent = 'Removed';
+      ring?.remove();
       button.textContent = 'Removed';
       if (is4KInstance) {
         match.sizeBytes = 0;
@@ -675,6 +782,79 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
   return cell;
 }
 
+
+// --- Collection completeness ring (TV) ---
+
+/**
+ * A small circular gauge with the percentage of a series' monitored, aired
+ * episodes that Sonarr has on disk (100% = every episode). Returns null when
+ * Sonarr reports no episodes to measure against.
+ */
+function createCompletenessRing(match) {
+  if (!match || !(match.episodeCount > 0)) return null;
+  const files = Math.min(match.episodeFiles || 0, match.episodeCount);
+  const fraction = files / match.episodeCount;
+  // Floor so 99.6% never reads as complete.
+  const percent = files === match.episodeCount ? 100 : Math.floor(fraction * 100);
+  const radius = 10;
+  const circumference = 2 * Math.PI * radius;
+  const tone = percent >= 100 ? 'is-complete' : percent >= 50 ? 'is-partial' : 'is-sparse';
+
+  const ring = document.createElement('span');
+  ring.className = `completeness-ring ${tone}`;
+  ring.title = `${files} of ${match.episodeCount} episodes (${percent}%)`;
+  ring.setAttribute('role', 'img');
+  ring.setAttribute('aria-label', `${percent}% of episodes present`);
+  ring.innerHTML = `<svg viewBox="0 0 26 26" width="26" height="26" aria-hidden="true">
+    <circle class="ring-track" cx="13" cy="13" r="${radius}" fill="none" stroke-width="2.5"/>
+    <circle class="ring-value" cx="13" cy="13" r="${radius}" fill="none" stroke-width="2.5" stroke-linecap="round"
+      stroke-dasharray="${circumference.toFixed(2)}" stroke-dashoffset="${(circumference * (1 - fraction)).toFixed(2)}"
+      transform="rotate(-90 13 13)"/>
+    <text x="13" y="13" text-anchor="middle" dominant-baseline="central">${percent}</text>
+  </svg>`;
+  return ring;
+}
+
+// --- Series status icon (TV) ---
+
+/**
+ * Whether a show is still airing, from the Sonarr series status of whichever
+ * instances matched it. "continuing" wins over "ended" if they disagree; no
+ * match, or a status such as "upcoming", is unknown.
+ */
+function seriesStatusOf(movie) {
+  const statuses = [movie.radarr4k?.status, movie.radarrHd?.status];
+  if (statuses.includes('continuing')) return 'continuing';
+  if (statuses.includes('ended')) return 'ended';
+  return 'unknown';
+}
+
+const STATUS_ICONS = {
+  continuing: {
+    label: 'Continuing: still airing',
+    svg: '<path d="M4 2.5v11l9-5.5z" fill="currentColor"/>',
+  },
+  ended: {
+    label: 'Ended: no new episodes',
+    svg: '<rect x="3" y="3" width="10" height="10" rx="1" fill="currentColor"/>',
+  },
+  unknown: {
+    label: 'Status unknown: no Sonarr match',
+    svg: '<rect x="3.5" y="2.5" width="3" height="11" rx="0.5" fill="currentColor"/><rect x="9.5" y="2.5" width="3" height="11" rx="0.5" fill="currentColor"/>',
+  },
+};
+
+function createStatusIcon(movie) {
+  const status = seriesStatusOf(movie);
+  const icon = STATUS_ICONS[status];
+  const el = document.createElement('span');
+  el.className = `show-status is-${status}`;
+  el.title = icon.label;
+  el.setAttribute('role', 'img');
+  el.setAttribute('aria-label', icon.label);
+  el.innerHTML = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${icon.svg}</svg>`;
+  return el;
+}
 // --- Manual Radarr matching ---
 
 /**
@@ -688,8 +868,8 @@ function buildMatchPicker(picker, movie) {
   form.className = 'match-search';
   const input = document.createElement('input');
   input.type = 'search';
-  input.placeholder = 'Search Radarr by title';
-  input.setAttribute('aria-label', 'Search Radarr by title');
+  input.placeholder = `Search ${MEDIA.arr} by title`;
+  input.setAttribute('aria-label', `Search ${MEDIA.arr} by title`);
   const searchButton = document.createElement('button');
   searchButton.type = 'button';
   searchButton.className = 'button button-secondary button-sm';
@@ -714,13 +894,13 @@ function buildMatchPicker(picker, movie) {
     status.textContent = 'Searching…';
     list.replaceChildren();
     try {
-      const { candidates } = await request('/api/radarr/candidates', {
+      const { candidates } = await request(MEDIA.candidatesURL, {
         method: 'POST',
         body: JSON.stringify({ title: movie.title, year: movie.year || 0, query }),
       });
       status.textContent = candidates.length
-        ? 'Pick the matching movie (applies to 4K and HD):'
-        : 'No similar movies in Radarr. Try a different search.';
+        ? `Pick the matching ${isTV ? 'show' : 'movie'} (applies to 4K and HD):`
+        : `No similar ${MEDIA.noun} in ${MEDIA.arr}. Try a different search.`;
       for (const candidate of candidates) {
         const item = document.createElement('li');
         const choose = document.createElement('button');
@@ -729,7 +909,7 @@ function buildMatchPicker(picker, movie) {
         const title = document.createElement('span');
         title.className = 'match-candidate-title';
         title.textContent = candidate.year ? `${candidate.title} (${candidate.year})` : candidate.title;
-        const ids = [candidate.tmdbId ? `TMDB ${candidate.tmdbId}` : '', candidate.imdbId || ''].filter(Boolean);
+        const ids = [candidate.tvdbId ? `TVDB ${candidate.tvdbId}` : '', candidate.tmdbId ? `TMDB ${candidate.tmdbId}` : '', candidate.imdbId || ''].filter(Boolean);
         const detail = document.createElement('span');
         detail.className = 'match-candidate-detail';
         detail.textContent = [
@@ -750,13 +930,14 @@ function buildMatchPicker(picker, movie) {
   async function select(candidate, button) {
     button.disabled = true;
     try {
-      const { matches } = await request('/api/radarr/match', {
+      const { matches } = await request(MEDIA.matchURL, {
         method: 'POST',
         body: JSON.stringify({
           plexTitle: movie.title,
           plexYear: movie.year || 0,
           title: candidate.title,
           year: candidate.year,
+          ...(isTV ? { tvdbId: candidate.tvdbId || 0 } : {}), // the movie endpoint rejects unknown fields
           tmdbId: candidate.tmdbId || 0,
           imdbId: candidate.imdbId || '',
           instances: missing(),
@@ -765,6 +946,7 @@ function buildMatchPicker(picker, movie) {
       if (matches['4k']) movie.radarr4k = matches['4k'];
       if (matches.hd) movie.radarrHd = matches.hd;
       const row = picker.closest('tr');
+      row?.querySelector('.show-status')?.replaceWith(createStatusIcon(movie));
       const columns = rowColumns();
       for (const quality of columns) {
         const oldCell = row?.querySelector(`.radarr-cell-${quality}`);

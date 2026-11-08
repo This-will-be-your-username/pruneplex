@@ -77,7 +77,8 @@ func (s *radarrSettingsStore) matches() *radarrMatchStore {
 	s.matchOnce.Do(func() {
 		path := ""
 		if s.path != "" {
-			path = filepath.Join(filepath.Dir(s.path), "radarr-matches.json")
+			name := strings.TrimSuffix(filepath.Base(s.path), ".json") + "-matches.json" // radarr.json -> radarr-matches.json
+			path = filepath.Join(filepath.Dir(s.path), name)
 		}
 		s.matchStore = newRadarrMatchStore(path)
 	})

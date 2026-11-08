@@ -127,9 +127,18 @@ func (h *radarrHandlers) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/radarr/match", h.saveMatch)
 }
 
+type settingsSection struct {
+	Prefix, Name, Eyebrow, Port string
+}
+
+var settingsSections = []settingsSection{
+	{Prefix: "radarr", Name: "Radarr", Eyebrow: "MOVIE MATCHING", Port: "7878"},
+	{Prefix: "sonarr", Name: "Sonarr", Eyebrow: "TV MATCHING", Port: "8989"},
+}
+
 func settingsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := page.ExecuteTemplate(w, "settings.html", nil); err != nil {
+	if err := page.ExecuteTemplate(w, "settings.html", map[string]any{"Sections": settingsSections}); err != nil {
 		http.Error(w, "could not render settings", http.StatusInternalServerError)
 	}
 }
@@ -303,6 +312,9 @@ type radarrMovieCopy struct {
 	Title     string `json:"title"`
 	Year      int    `json:"year"`
 	SizeBytes int64  `json:"sizeBytes"`
+	Status    string `json:"status,omitempty"` // Sonarr series status
+	EpisodeFiles int `json:"episodeFiles,omitempty"`
+	EpisodeCount int `json:"episodeCount,omitempty"`
 }
 
 func newRadarrMovieCopy(m radarr.Movie) *radarrMovieCopy {

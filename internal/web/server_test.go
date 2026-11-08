@@ -20,6 +20,9 @@ func TestHandlerRoutes(t *testing.T) {
 	}{
 		{name: "home page", path: "/", wantStatus: http.StatusOK, wantBody: "PrunePlex"},
 		{name: "Radarr settings page", path: "/settings", wantStatus: http.StatusOK, wantBody: "API key"},
+		{name: "TV shows page", path: "/tv", wantStatus: http.StatusOK, wantBody: "TV Shows"},
+		{name: "Sonarr settings", path: "/settings", wantStatus: http.StatusOK, wantBody: "Sonarr instances"},
+		{name: "logo", path: "/assets/logo.svg", wantStatus: http.StatusOK, wantBody: "<svg"},
 		{name: "health check", path: "/healthz", wantStatus: http.StatusOK, wantBody: `"status":"ok"`},
 		{name: "Plex browser script", path: "/assets/app.js", wantStatus: http.StatusOK, wantBody: "plex-connect"},
 		{name: "unknown route", path: "/missing", wantStatus: http.StatusNotFound},

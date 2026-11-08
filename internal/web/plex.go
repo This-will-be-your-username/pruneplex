@@ -28,6 +28,7 @@ type plexConnector struct {
 	clientID string
 	sessions map[string]*plexSession
 	radarr   *radarrSettingsStore
+	sonarr   *radarrSettingsStore
 	auth     *plexAuthStore
 }
 
@@ -38,6 +39,10 @@ type plexSession struct {
 	accountToken string
 	servers      []plex.Resource
 	selected     *connectedServer
+
+	// Latest Plex scans, kept so pages can show them again after navigation.
+	movieScan *plex.Analysis
+	showScan  *plex.ShowAnalysis
 }
 
 type connectedServer struct {
@@ -160,6 +165,9 @@ func (c *plexConnector) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/plex/disconnect", c.disconnect)
 	mux.HandleFunc("GET /api/plex/libraries", c.libraries)
 	mux.HandleFunc("POST /api/plex/analyze", c.analyze)
+	mux.HandleFunc("POST /api/plex/analyze-tv", c.analyzeTV)
+	mux.HandleFunc("GET /api/plex/analysis", c.lastMovieAnalysis)
+	mux.HandleFunc("GET /api/plex/analysis-tv", c.lastShowAnalysis)
 	mux.HandleFunc("GET /api/plex/thumb", c.thumb)
 }
 
@@ -359,10 +367,14 @@ func (c *plexConnector) libraries(w http.ResponseWriter, r *http.Request) {
 	if server == nil {
 		return
 	}
-	libraries, err := c.client.MovieLibraries(r.Context(), server.baseURL, server.token)
+	sectionType := "movie"
+	if r.URL.Query().Get("type") == "show" {
+		sectionType = "show"
+	}
+	libraries, err := c.client.Libraries(r.Context(), server.baseURL, server.token, sectionType)
 	if err != nil {
 		log.Printf("Plex library listing failed: %v", err)
-		writeAPIError(w, http.StatusBadGateway, "Could not list Plex movie libraries")
+		writeAPIError(w, http.StatusBadGateway, "Could not list Plex libraries")
 		return
 	}
 	if libraries == nil {
@@ -396,20 +408,68 @@ func (c *plexConnector) analyze(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadGateway, "Plex movie analysis failed")
 		return
 	}
+	c.rememberScan(w, r, func(session *plexSession) { session.movieScan = &result })
+	response, failure := c.movieResponse(r.Context(), result)
+	if failure != nil {
+		writeAPIError(w, failure.status, failure.message)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+// apiFailure is an error to report to the client.
+type apiFailure struct {
+	status  int
+	message string
+}
+
+// rememberScan stores the latest Plex scan on the session so the page can show
+// it again after the user navigates elsewhere and comes back.
+func (c *plexConnector) rememberScan(w http.ResponseWriter, r *http.Request, set func(*plexSession)) {
+	session, _ := c.getSession(w, r, false)
+	if session == nil {
+		return
+	}
+	c.mu.Lock()
+	set(session)
+	c.mu.Unlock()
+}
+
+// lastMovieAnalysis returns the remembered movie scan, matched afresh against
+// Radarr so deletions and manual matches made since are reflected.
+func (c *plexConnector) lastMovieAnalysis(w http.ResponseWriter, r *http.Request) {
+	session, _ := c.getSession(w, r, false)
+	var scan *plex.Analysis
+	if session != nil {
+		c.mu.Lock()
+		scan = session.movieScan
+		c.mu.Unlock()
+	}
+	if scan == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"analysis": nil})
+		return
+	}
+	response, failure := c.movieResponse(r.Context(), *scan)
+	if failure != nil {
+		writeAPIError(w, failure.status, failure.message)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"analysis": response})
+}
+
+// movieResponse matches a Plex movie scan against the configured Radarr instances.
+func (c *plexConnector) movieResponse(ctx context.Context, result plex.Analysis) (analysisResponse, *apiFailure) {
 	settings, err := c.radarr.snapshot()
 	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "Could not read Radarr settings")
-		return
+		return analysisResponse{}, &apiFailure{http.StatusInternalServerError, "Could not read Radarr settings"}
 	}
-	fourKMovies, err := listRadarrMovies(r.Context(), settings.FourK)
+	fourKMovies, err := listRadarrMovies(ctx, settings.FourK)
 	if err != nil {
-		writeAPIError(w, http.StatusBadGateway, "Could not read the 4K Radarr library")
-		return
+		return analysisResponse{}, &apiFailure{http.StatusBadGateway, "Could not read the 4K Radarr library"}
 	}
-	hdMovies, err := listRadarrMovies(r.Context(), settings.HD)
+	hdMovies, err := listRadarrMovies(ctx, settings.HD)
 	if err != nil {
-		writeAPIError(w, http.StatusBadGateway, "Could not read the HD Radarr library")
-		return
+		return analysisResponse{}, &apiFailure{http.StatusBadGateway, "Could not read the HD Radarr library"}
 	}
 	manual := c.radarr.matches()
 	// findMatch prefers a pairing the user chose by hand, then automatic ID/title matching.
@@ -455,7 +515,7 @@ func (c *plexConnector) analyze(w http.ResponseWriter, r *http.Request) {
 		Other:   enrich(result.Other),
 	}
 	response.Matches = HighlightTop4KVideos(response.Matches)
-	writeJSON(w, http.StatusOK, response)
+	return response, nil
 }
 
 func (c *plexConnector) thumb(w http.ResponseWriter, r *http.Request) {
@@ -580,6 +640,10 @@ type radarrMovieMatch struct {
 	Title     string `json:"title"`
 	Year      int    `json:"year"`
 	SizeBytes int64  `json:"sizeBytes"`
+	Status    string `json:"status,omitempty"` // Sonarr series status: continuing, ended, ...
+	// Sonarr only: episodes on disk out of the monitored, aired episodes.
+	EpisodeFiles int `json:"episodeFiles,omitempty"`
+	EpisodeCount int `json:"episodeCount,omitempty"`
 }
 
 func listRadarrMovies(ctx context.Context, instance radarr.Instance) ([]radarr.Movie, error) {
