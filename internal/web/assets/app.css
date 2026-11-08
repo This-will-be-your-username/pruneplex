@@ -362,8 +362,10 @@ td.is-top-4k {
 .tab-panel[hidden] { display: none; }
 
 /* Manual Radarr matching */
-.radarr-no-match { display: grid; justify-items: start; gap: 7px; min-width: 150px; }
+.radarr-no-match { min-width: 150px; }
+.no-match-content { display: grid; justify-items: start; gap: 7px; }
 .match-picker { display: grid; gap: 6px; width: 100%; min-width: 220px; }
+.match-picker[hidden] { display: none; }
 .match-search { display: flex; gap: 6px; }
 .match-search input { flex: 1; min-width: 0; padding: 4px 8px; background: #111; color: #e6e6e6; border: 1px solid var(--line); font: inherit; font-size: 11px; }
 .match-status { margin: 0; color: #aaa; font-size: 10px; }

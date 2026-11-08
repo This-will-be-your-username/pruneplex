@@ -23,13 +23,13 @@ each managed by its own Radarr instance.
    | **Multiple resolutions** | Movies that have a 4K version *and* at least one non-4K version, the prime candidates for pruning. |
    | **Only 4K** | Movies with exactly one resolution, and it is 4K. |
    | **Only HD** | Movies with exactly one resolution, and it is below 4K. |
-   | **Other** | Everything else: several non-4K versions (e.g. 1080p + 720p) or no resolution data. |
+   | **Other** | Everything else: several non-4K versions (e.g. 1080p + 720p), or a movie with a version whose resolution Plex does not report. |
 
    Classification uses the versions Plex stores on a single movie entry. If you
    keep HD and 4K copies in *separate* libraries, Plex lists them as two
-   different entries, so each looks like a single-resolution movie. The Radarr
-   columns on the Only 4K / Only HD tabs show whether the same movie also
-   exists in the other Radarr instance.
+   different entries, so each looks like a single-resolution movie. Each of the
+   Only 4K / Only HD tabs shows the Radarr column for its own instance, ready for
+   pruning; the Multiple resolutions and Other tabs show both.
 3. **Review.** Each row shows the poster, title and year, rating badges (Rotten
    Tomatoes critic/audience, IMDb, TMDB, Metacritic and others, whatever Plex
    has), the resolutions present, and the matching movie in each configured

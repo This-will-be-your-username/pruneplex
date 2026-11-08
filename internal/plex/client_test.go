@@ -73,7 +73,7 @@ func TestAnalyzeMoviesFindsMixed4KVersions(t *testing.T) {
 			if r.URL.Query().Get("type") != "1" || r.Header.Get("X-Plex-Container-Start") != "0" || r.Header.Get("X-Plex-Container-Size") != "500" {
 				t.Fatalf("missing movie query or paging headers")
 			}
-			fmt.Fprint(w, `{"MediaContainer":{"totalSize":5,"Metadata":[{"title":"Both Versions","year":2020,"thumb":"/library/metadata/101/thumb/123","Rating":[{"image":"rottentomatoes://image.rating.ripe","value":9.4,"type":"critic"},{"image":"themoviedb://image.rating","value":8.1,"type":"audience"},{"image":"imdb://image.rating","value":8.4,"type":"audience"}],"Guid":[{"id":"tmdb://105"},{"id":"imdb://tt0088763"}],"Media":[{"videoResolution":"4k","Part":[{"size":50000000000}]},{"videoResolution":"1080","Part":[{"size":10000000000}]}]},{"title":"Only 4K","Media":[{"videoResolution":"4k"}]},{"title":"Only HD","Media":[{"videoResolution":"1080"}]},{"title":"Two HD","Media":[{"videoResolution":"1080"},{"videoResolution":"720"}]},{"title":"2160 and HD","thumb":"/library/metadata/102/thumb/456","Media":[{"videoResolution":"2160p","size":30000000000},{"videoResolution":"720"}]}]}}`)
+			fmt.Fprint(w, `{"MediaContainer":{"totalSize":6,"Metadata":[{"title":"Both Versions","year":2020,"thumb":"/library/metadata/101/thumb/123","Rating":[{"image":"rottentomatoes://image.rating.ripe","value":9.4,"type":"critic"},{"image":"themoviedb://image.rating","value":8.1,"type":"audience"},{"image":"imdb://image.rating","value":8.4,"type":"audience"}],"Guid":[{"id":"tmdb://105"},{"id":"imdb://tt0088763"}],"Media":[{"videoResolution":"4k","Part":[{"size":50000000000}]},{"videoResolution":"1080","Part":[{"size":10000000000}]}]},{"title":"Only 4K","Media":[{"videoResolution":"4k"}]},{"title":"Only HD","Media":[{"videoResolution":"1080"}]},{"title":"4K plus unknown","Media":[{"videoResolution":"4k"},{"container":"mkv"}]},{"title":"Two HD","Media":[{"videoResolution":"1080"},{"videoResolution":"720"}]},{"title":"2160 and HD","thumb":"/library/metadata/102/thumb/456","Media":[{"videoResolution":"2160p","size":30000000000},{"videoResolution":"720"}]}]}}`)
 		case "/library/metadata/101/thumb/123":
 			w.Header().Set("Content-Type", "image/jpeg")
 			fmt.Fprint(w, "fake-image-bytes")
@@ -88,7 +88,7 @@ func TestAnalyzeMoviesFindsMixed4KVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Scanned != 5 || len(result.Matches) != 2 || len(result.Only4K) != 1 || len(result.OnlyHD) != 1 || len(result.Other) != 1 || result.Other[0].Title != "Two HD" || result.Only4K[0].Title != "Only 4K" || result.OnlyHD[0].Title != "Only HD" {
+	if result.Scanned != 6 || len(result.Matches) != 2 || len(result.Only4K) != 1 || len(result.OnlyHD) != 1 || len(result.Other) != 2 || result.Only4K[0].Title != "Only 4K" || result.OnlyHD[0].Title != "Only HD" {
 		t.Fatalf("got analysis %+v", result)
 	}
 	if result.Matches[0].Title != "2160 and HD" || result.Matches[1].Title != "Both Versions" {

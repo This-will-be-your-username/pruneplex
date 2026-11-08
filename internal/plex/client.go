@@ -264,7 +264,7 @@ func (c *Client) AnalyzeMovies(ctx context.Context, baseURL, token, libraryKey s
 				switch {
 				case hasMixed4K(resolutions):
 					result.Matches = append(result.Matches, item)
-				case distinctResolutions(resolutions) != 1:
+				case hasUnknownResolution(movie.Media), distinctResolutions(resolutions) != 1:
 					result.Other = append(result.Other, item)
 				case is4K(resolutions[0]):
 					result.Only4K = append(result.Only4K, item)
@@ -698,4 +698,15 @@ func distinctResolutions(resolutions []string) int {
 		}
 	}
 	return len(seen)
+}
+
+// hasUnknownResolution reports whether any version lacks a resolution. Such a
+// movie can't be called single-resolution because the unknown version may differ.
+func hasUnknownResolution(media []mediaItem) bool {
+	for _, version := range media {
+		if strings.TrimSpace(version.VideoResolution) == "" {
+			return true
+		}
+	}
+	return false
 }

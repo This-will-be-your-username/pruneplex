@@ -317,9 +317,9 @@ function renderResults(analysis) {
   for (const [index, movie] of analysis.matches.entries()) {
     resultsBody.append(buildRow(movie, index, ['4k', 'hd']));
   }
-  renderSingleResolution('only4k', analysis.only4k || []);
-  renderSingleResolution('onlyhd', analysis.onlyHd || []);
-  renderSingleResolution('other', analysis.other || []);
+  renderSingleResolution('only4k', analysis.only4k || [], ['4k']);
+  renderSingleResolution('onlyhd', analysis.onlyHd || [], ['hd']);
+  renderSingleResolution('other', analysis.other || [], ['4k', 'hd']);
   setText('#count-multi', analysis.matches.length);
   if (results) results.hidden = false;
   if (filterContainer) filterContainer.hidden = false;
@@ -330,12 +330,12 @@ function setText(selector, value) {
   if (el) el.textContent = String(value);
 }
 
-function renderSingleResolution(prefix, movies) {
+function renderSingleResolution(prefix, movies, columns) {
   const body = doc?.querySelector(`#${prefix}-body`);
   if (!body) return;
   body.replaceChildren();
   for (const [index, movie] of movies.entries()) {
-    body.append(buildRow(movie, index, ['4k', 'hd']));
+    body.append(buildRow(movie, index, columns));
   }
   setText(`#${prefix}-result-count`, `${movies.length} movies`);
   setText(`#count-${prefix}`, movies.length);
@@ -417,7 +417,8 @@ function buildRow(movie, index, qualities) {
     }
     resolutionCell.append(resolutionList);
     row.append(titleCell, ratingsCell, resolutionCell);
-    for (const quality of qualities) row.append(createRadarrCell(movie, quality));
+    row.dataset.columns = qualities.join(',');
+    for (const quality of qualities) row.append(createRadarrCell(movie, quality, qualities));
     return row;
 }
 
@@ -574,7 +575,7 @@ function createRatingBadge(rating) {
 
 // --- Radarr cell ---
 
-function createRadarrCell(movie, quality) {
+function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
   const cell = document.createElement('td');
   const is4KInstance = quality === '4k';
   if (is4KInstance) {
@@ -596,7 +597,20 @@ function createRadarrCell(movie, quality) {
   if (!match) {
     cell.classList.add('radarr-no-match');
     const label = document.createElement('span');
+    const wrap = (...children) => {
+      const box = document.createElement('div');
+      box.className = 'no-match-content';
+      box.append(...children);
+      return box;
+    };
     label.textContent = 'No match';
+    // One picker per row fixes every unmatched instance, so only the first
+    // unmatched column shows the button (the 4K column when it needs a match).
+    const fourKNeedsMatch = columns.includes('4k') && movie.radarr4kConfigured && !movie.radarr4k;
+    if (!is4KInstance && fourKNeedsMatch) {
+      cell.append(wrap(label));
+      return cell;
+    }
     const findButton = document.createElement('button');
     findButton.type = 'button';
     findButton.className = 'button button-secondary button-sm find-match-button';
@@ -611,7 +625,7 @@ function createRadarrCell(movie, quality) {
         buildMatchPicker(picker, movie);
       }
     });
-    cell.append(label, findButton, picker);
+    cell.append(wrap(label, findButton, picker));
     return cell;
   }
 
@@ -689,9 +703,11 @@ function buildMatchPicker(picker, movie) {
   picker.append(form, status, list);
 
   // Instances that are configured but have no match yet.
+  // Columns shown in this row (Only 4K / Only HD tabs show just one).
+  const rowColumns = () => (picker.closest('tr')?.dataset.columns || '4k,hd').split(',');
   const missing = () => [
-    ...(movie.radarr4kConfigured && !movie.radarr4k ? ['4k'] : []),
-    ...(movie.radarrHdConfigured && !movie.radarrHd ? ['hd'] : []),
+    ...(rowColumns().includes('4k') && movie.radarr4kConfigured && !movie.radarr4k ? ['4k'] : []),
+    ...(rowColumns().includes('hd') && movie.radarrHdConfigured && !movie.radarrHd ? ['hd'] : []),
   ];
 
   async function load(query) {
@@ -749,9 +765,10 @@ function buildMatchPicker(picker, movie) {
       if (matches['4k']) movie.radarr4k = matches['4k'];
       if (matches.hd) movie.radarrHd = matches.hd;
       const row = picker.closest('tr');
-      for (const quality of ['4k', 'hd']) {
+      const columns = rowColumns();
+      for (const quality of columns) {
         const oldCell = row?.querySelector(`.radarr-cell-${quality}`);
-        if (oldCell) oldCell.replaceWith(createRadarrCell(movie, quality));
+        if (oldCell) oldCell.replaceWith(createRadarrCell(movie, quality, columns));
       }
       if (row) {
         const fourK = get4KSize(movie);
