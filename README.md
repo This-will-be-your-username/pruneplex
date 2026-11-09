@@ -11,12 +11,14 @@ some of it back.
 
 It finds the titles that exist in multiple resolutions, shows each copy's size
 next to ratings, and lets you remove the copies you decide aren't worth keeping,
-through Radarr (movies) and Sonarr (TV). Keep both versions of the titles you
+through Radarr (movies) and Sonarr (TV), plus a Lidarr-backed Music page for
+pruning albums. Keep both versions of the titles you
 love; drop the 4K or the HD copy of the ones you don't. It is a tool for trimming
 a multi-resolution collection, not for wiping out titles wholesale.
 
 It is built for the common setup of keeping separate **4K** and **HD** libraries,
-each managed by its own Radarr or Sonarr instance.
+each managed by its own Radarr or Sonarr instance. Music is separate: a Lidarr-only
+page that needs no Plex (see [Music](#music-lidarr)).
 
 ## Screenshots
 
@@ -115,6 +117,41 @@ files via Sonarr.
 PrunePlex never deletes anything itself or talks to Plex to delete: all
 deletions go through Radarr or Sonarr, and only after you confirm.
 
+## Music (Lidarr)
+
+The **Music** page is a standalone Lidarr integration, and it is different from
+the Movies and TV pages in one important way: **it does not use Plex at all.**
+It never connects to Plex and works even if you don't run Plex or your music
+isn't in a Plex library. It reads your library straight from a single Lidarr
+instance and prunes through Lidarr's API.
+
+It exists to fill a gap in Lidarr itself. Lidarr has no one-step way to reclaim
+an album's disk space while keeping the album in your library and stopping it
+from being downloaded again. Unmonitoring an album leaves its files on disk, and
+deleting the album removes it from Lidarr altogether. PrunePlex adds the missing
+action: **Delete tracks**.
+
+Artists are listed alphabetically, each collapsible to show its albums (newest
+first) with track counts, size on disk and whether the album is monitored.
+Search by artist or album, and use *Show albums without files* to include
+albums with nothing on disk.
+
+**Delete tracks** on an album prunes it without removing it from Lidarr:
+
+1. the album is **unmonitored** in Lidarr (unfollowed), so it won't be searched
+   for or re-downloaded, then
+2. all of its **track files are deleted** from disk.
+
+The album and its artist stay in Lidarr, so you can re-follow the album later.
+
+**Delete artist** goes further: it removes the artist from Lidarr entirely,
+albums included, and deletes all of their files from disk. (It does not add an
+import-list exclusion.)
+
+The header shows how much space the music uses and the free space of the root
+folder holding it (hover for the path). By default that is the root folder with
+the most music; connect Lidarr and pick another under **Settings**.
+
 ## Setup
 
 1. Run PrunePlex (see [Running](#running)) and open http://localhost:8081.
@@ -126,7 +163,8 @@ deletions go through Radarr or Sonarr, and only after you confirm.
    media; choose another folder there if that is not the one you care about.
    Each instance also has a **Stop import lists re-adding deleted movies/shows**
    checkbox: when ticked, anything you delete through PrunePlex is also added to
-   that instance's import exclusions, so a list cannot bring it back.
+   that instance's import exclusions, so a list cannot bring it back. For the
+   **Music** page, just connect Lidarr in the Lidarr section; Plex is not involved.
 3. Back on **Movies** (or **TV Shows**), click **Connect Plex**, choose your server, pick a
    library and click **Analyze movies**.
 
@@ -144,7 +182,7 @@ choices are saved in `radarr-matches.json` and reused on later scans.
   delete movies through your Radarr. Run it on a trusted network or behind a
   reverse proxy or firewall that restricts access.
 - Your Plex token and Radarr API keys are stored in plaintext JSON
-  (`plex.json`, `radarr.json`, `sonarr.json`; manual matches go in
+  (`plex.json`, `radarr.json`, `sonarr.json`, `lidarr.json`; manual matches go in
   `radarr-matches.json` and `sonarr-matches.json`) in the config directory with owner-only
   permissions: `%AppData%\pruneplex` on Windows,
   `~/.config/pruneplex` on Linux, `~/Library/Application Support/pruneplex` on
