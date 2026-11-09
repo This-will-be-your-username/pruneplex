@@ -71,6 +71,46 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # Builds the container image and starts it through compose, the way a user
+  # would, then checks it is healthy, within its limits and able to save settings.
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate and build
+        run: |
+          docker compose config -q
+          docker compose build
+          docker image ls pruneplex:local --format 'image size: {{.Size}}'
+      - name: Start and wait for healthy
+        run: |
+          docker compose up -d
+          status=starting
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' pruneplex)
+            [ "$status" = healthy ] && break
+            sleep 2
+          done
+          echo "health: $status"
+          docker compose logs --no-color
+          [ "$status" = healthy ]
+          curl -fsS http://127.0.0.1:4848/healthz
+      - name: Check limits and that the read-only container can save settings
+        run: |
+          # An empty Lidarr connection is valid; saving it writes /config/lidarr.json,
+          # which proves the unprivileged user can write to the volume.
+          curl -fsS -X PUT -H 'Content-Type: application/json' \
+            -d '{"url":"","apiKey":""}' http://127.0.0.1:4848/api/settings/lidarr
+          docker cp pruneplex:/config/lidarr.json -
+          test "$(docker inspect --format '{{.HostConfig.Memory}}' pruneplex)" = 134217728
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' pruneplex)" = true
+          test "$(docker inspect --format '{{.State.OOMKilled}}' pruneplex)" = false
+          docker stats --no-stream --format 'idle usage: mem={{.MemUsage}} cpu={{.CPUPerc}}' pruneplex
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
   # A versioned release, published when a v* tag is pushed.
   release:
     if: github.ref_type == 'tag'

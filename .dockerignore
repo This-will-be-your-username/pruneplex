@@ -1,0 +1,15 @@
+# Keep the build context tiny: the Dockerfile copies only go.mod, cmd/ and internal/.
+.git
+.github
+dist
+docs
+test
+tools
+node_modules
+*.md
+package.json
+Dockerfile
+compose.yaml
+.dockerignore
+.env
+.env.*
