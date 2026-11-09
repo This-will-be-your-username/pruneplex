@@ -115,3 +115,42 @@ func TestClearMatchEndpointsRemoveManualMatches(t *testing.T) {
 		}
 	}
 }
+
+func TestExcludeOnDeleteSettingIsSavedAndAppliedToRemoval(t *testing.T) {
+	var radarrQuery, sonarrQuery string
+	radarrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { radarrQuery = r.URL.RawQuery }))
+	defer radarrServer.Close()
+	sonarrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { sonarrQuery = r.URL.RawQuery }))
+	defer sonarrServer.Close()
+
+	handler := newHandler(newRadarrSettingsStoreAt(filepath.Join(t.TempDir(), "radarr.json")))
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(method, path, strings.NewReader(body)))
+		return response
+	}
+	save := func(path, url string, exclude bool) {
+		body := `{"fourK":{"url":"` + url + `","apiKey":"k","excludeOnDelete":` + map[bool]string{true: "true", false: "false"}[exclude] + `},"hd":{"url":"","apiKey":""}}`
+		if response := do(http.MethodPut, path, body); response.Code != http.StatusOK {
+			t.Fatalf("save %s: %d %s", path, response.Code, response.Body.String())
+		}
+	}
+
+	save("/api/settings/radarr", radarrServer.URL, true)
+	save("/api/settings/sonarr", sonarrServer.URL, false)
+	for _, path := range []string{"/api/settings/radarr", "/api/settings/sonarr"} {
+		want := path == "/api/settings/radarr"
+		if got := do(http.MethodGet, path, "").Body.String(); strings.Contains(got, `"excludeOnDelete":true`) != want {
+			t.Fatalf("%s should report excludeOnDelete=%v, got %s", path, want, got)
+		}
+	}
+
+	do(http.MethodPost, "/api/radarr/movie/remove", `{"quality":"4k","movieId":1}`)
+	do(http.MethodPost, "/api/sonarr/series/remove", `{"quality":"4k","seriesId":1}`)
+	if !strings.Contains(radarrQuery, "addImportExclusion=true") {
+		t.Fatalf("Radarr removal should add the exclusion, query %q", radarrQuery)
+	}
+	if strings.Contains(sonarrQuery, "addImportListExclusion") {
+		t.Fatalf("Sonarr removal should not add the exclusion when unticked, query %q", sonarrQuery)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -51,5 +52,27 @@ func TestClientListsAndRemovesSeriesWithFiles(t *testing.T) {
 	}
 	if err := client.RemoveSeries(context.Background(), 7); err != nil || deleted != "true" {
 		t.Fatalf("remove err = %v, deleteFiles = %q", err, deleted)
+	}
+}
+
+func TestRemoveSeriesAddsImportListExclusionOnlyWhenConfigured(t *testing.T) {
+	var query string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.RawQuery
+	}))
+	defer server.Close()
+
+	for _, exclude := range []bool{false, true} {
+		client := NewClient(server.Client(), Instance{URL: server.URL, APIKey: "k", ExcludeOnDelete: exclude})
+		if err := client.RemoveSeries(context.Background(), 3); err != nil {
+			t.Fatal(err)
+		}
+		values, _ := url.ParseQuery(query)
+		if values.Get("deleteFiles") != "true" {
+			t.Fatalf("exclude=%v: files must always be deleted, query %q", exclude, query)
+		}
+		if got := values.Get("addImportListExclusion") == "true"; got != exclude {
+			t.Fatalf("exclude=%v: addImportListExclusion present = %v (query %q)", exclude, got, query)
+		}
 	}
 }

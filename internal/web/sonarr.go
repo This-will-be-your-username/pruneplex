@@ -41,8 +41,8 @@ func (h *sonarrHandlers) getSettings(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]radarrInstanceStatus{
-		"fourK": {URL: settings.FourK.URL, Configured: settings.FourK.APIKey != "", RootFolder: settings.FourK.RootFolder},
-		"hd":    {URL: settings.HD.URL, Configured: settings.HD.APIKey != "", RootFolder: settings.HD.RootFolder},
+		"fourK": {URL: settings.FourK.URL, Configured: settings.FourK.APIKey != "", RootFolder: settings.FourK.RootFolder, ExcludeOnDelete: settings.FourK.ExcludeOnDelete},
+		"hd":    {URL: settings.HD.URL, Configured: settings.HD.APIKey != "", RootFolder: settings.HD.RootFolder, ExcludeOnDelete: settings.HD.ExcludeOnDelete},
 	})
 }
 

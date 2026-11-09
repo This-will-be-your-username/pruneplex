@@ -17,6 +17,9 @@ type Instance struct {
 	// RootFolder is the media folder whose free space the header reports. Empty
 	// means automatic: the root folder holding the most media.
 	RootFolder string `json:"rootFolder,omitempty"`
+	// ExcludeOnDelete adds a removed movie/series to the import-list exclusions so
+	// lists cannot add it back.
+	ExcludeOnDelete bool `json:"excludeOnDelete,omitempty"`
 }
 
 type Settings struct {
@@ -108,6 +111,9 @@ func (c *Client) RemoveMovie(ctx context.Context, movieID int) error {
 	}
 	query := request.URL.Query()
 	query.Set("deleteFiles", "true")
+	if c.instance.ExcludeOnDelete {
+		query.Set("addImportExclusion", "true")
+	}
 	request.URL.RawQuery = query.Encode()
 	response, err := c.httpClient.Do(request)
 	if err != nil {

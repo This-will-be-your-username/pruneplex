@@ -110,6 +110,9 @@ func (c *Client) RemoveSeries(ctx context.Context, seriesID int) error {
 	}
 	query := request.URL.Query()
 	query.Set("deleteFiles", "true")
+	if c.instance.ExcludeOnDelete {
+		query.Set("addImportListExclusion", "true") // Sonarr's name for the same option
+	}
 	request.URL.RawQuery = query.Encode()
 	response, err := c.httpClient.Do(request)
 	if err != nil {

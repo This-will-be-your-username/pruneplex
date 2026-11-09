@@ -54,6 +54,10 @@
                 <select id="{{.Prefix}}-4k-folder" data-folder="4k" disabled>
                   <option value="">Save the connection to choose a folder</option>
                 </select>
+                <label class="settings-check" for="{{.Prefix}}-4k-exclude">
+                  <input id="{{.Prefix}}-4k-exclude" type="checkbox">
+                  <span>Stop import lists re-adding deleted {{.Items}}</span>
+                </label>
                 <div class="instance-actions">
                   <button class="button button-secondary" type="button" data-test="4k">Test connection</button>
                   <button class="button button-danger" type="button" data-clear="4k" hidden>Clear</button>
@@ -71,6 +75,10 @@
                 <select id="{{.Prefix}}-hd-folder" data-folder="hd" disabled>
                   <option value="">Save the connection to choose a folder</option>
                 </select>
+                <label class="settings-check" for="{{.Prefix}}-hd-exclude">
+                  <input id="{{.Prefix}}-hd-exclude" type="checkbox">
+                  <span>Stop import lists re-adding deleted {{.Items}}</span>
+                </label>
                 <div class="instance-actions">
                   <button class="button button-secondary" type="button" data-test="hd">Test connection</button>
                   <button class="button button-danger" type="button" data-clear="hd" hidden>Clear</button>

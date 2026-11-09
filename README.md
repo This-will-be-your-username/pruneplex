@@ -120,6 +120,9 @@ deletions go through Radarr or Sonarr, and only after you confirm.
    an instance is saved, a **Folder for free space** picker appears under it. By
    default PrunePlex reports the free space of the root folder holding the most
    media; choose another folder there if that is not the one you care about.
+   Each instance also has a **Stop import lists re-adding deleted movies/shows**
+   checkbox: when ticked, anything you delete through PrunePlex is also added to
+   that instance's import exclusions, so a list cannot bring it back.
 3. Back on **Movies** (or **TV Shows**), click **Connect Plex**, choose your server, pick a
    library and click **Analyze movies**.
 

@@ -24,6 +24,7 @@ function initSettingsForm(form) {
       apiKey: document.querySelector(`#${prefix}-4k-key`),
       state: document.querySelector(`#${prefix}-4k-state`),
       folder: document.querySelector(`#${prefix}-4k-folder`),
+      exclude: document.querySelector(`#${prefix}-4k-exclude`),
     },
     hd: {
       key: 'hd',
@@ -31,6 +32,7 @@ function initSettingsForm(form) {
       apiKey: document.querySelector(`#${prefix}-hd-key`),
       state: document.querySelector(`#${prefix}-hd-state`),
       folder: document.querySelector(`#${prefix}-hd-folder`),
+      exclude: document.querySelector(`#${prefix}-hd-exclude`),
     },
   };
   const label = (quality) => `${quality === '4k' ? '4K' : 'HD'} ${name}`;
@@ -87,6 +89,7 @@ function initSettingsForm(form) {
       item.url.value = saved.url || '';
       item.state.textContent = saved.configured ? 'Configured' : 'Not configured';
       item.state.classList.toggle('configured', saved.configured);
+      item.exclude.checked = Boolean(saved.excludeOnDelete);
       form.querySelector(`[data-clear="${quality}"]`).hidden = !saved.configured;
       await fillFolders(quality, item, saved);
     }
@@ -100,8 +103,8 @@ function initSettingsForm(form) {
       await request(api, {
         method: 'PUT',
         body: JSON.stringify({
-          fourK: { url: instances['4k'].url.value, apiKey: instances['4k'].apiKey.value, rootFolder: instances['4k'].folder.value },
-          hd: { url: instances.hd.url.value, apiKey: instances.hd.apiKey.value, rootFolder: instances.hd.folder.value },
+          fourK: { url: instances['4k'].url.value, apiKey: instances['4k'].apiKey.value, rootFolder: instances['4k'].folder.value, excludeOnDelete: instances['4k'].exclude.checked },
+          hd: { url: instances.hd.url.value, apiKey: instances.hd.apiKey.value, rootFolder: instances.hd.folder.value, excludeOnDelete: instances.hd.exclude.checked },
         }),
       });
       for (const instance of Object.values(instances)) instance.apiKey.value = '';

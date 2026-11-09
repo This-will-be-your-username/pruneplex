@@ -413,3 +413,7 @@ td.is-top-4k {
 }
 .unlink-match:hover:not(:disabled) { color: #e6e6e6; border-color: #f2b632; }
 .unlink-match:disabled { opacity: .5; cursor: default; }
+
+/* Checkbox rows on the Settings page */
+.settings-instance .settings-check { display: flex; align-items: center; gap: 9px; margin: 16px 0 0; color: #ccc; font-size: 11px; font-weight: 600; cursor: pointer; }
+.settings-instance .settings-check input { width: auto; height: auto; padding: 0; margin: 0; accent-color: var(--green); }

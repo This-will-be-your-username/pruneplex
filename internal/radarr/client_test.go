@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -97,5 +98,27 @@ func TestChooseRootFolder(t *testing.T) {
 	}
 	if _, ok := ChooseRootFolder(nil, "", usage); ok {
 		t.Fatal("no root folders should report not-found")
+	}
+}
+
+func TestRemoveMovieAddsImportExclusionOnlyWhenConfigured(t *testing.T) {
+	var query string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.RawQuery
+	}))
+	defer server.Close()
+
+	for _, exclude := range []bool{false, true} {
+		client := NewClient(server.Client(), Instance{URL: server.URL, APIKey: "k", ExcludeOnDelete: exclude})
+		if err := client.RemoveMovie(context.Background(), 3); err != nil {
+			t.Fatal(err)
+		}
+		values, _ := url.ParseQuery(query)
+		if values.Get("deleteFiles") != "true" {
+			t.Fatalf("exclude=%v: files must always be deleted, query %q", exclude, query)
+		}
+		if got := values.Get("addImportExclusion") == "true"; got != exclude {
+			t.Fatalf("exclude=%v: addImportExclusion present = %v (query %q)", exclude, got, query)
+		}
 	}
 }

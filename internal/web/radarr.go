@@ -34,6 +34,7 @@ type radarrInstanceStatus struct {
 	URL        string `json:"url"`
 	Configured bool   `json:"configured"`
 	RootFolder string `json:"rootFolder"`
+	ExcludeOnDelete bool `json:"excludeOnDelete"`
 }
 
 func newRadarrSettingsStore() *radarrSettingsStore {
@@ -132,12 +133,12 @@ func (h *radarrHandlers) register(mux *http.ServeMux) {
 }
 
 type settingsSection struct {
-	Prefix, Name, Eyebrow, Port string
+	Prefix, Name, Eyebrow, Port, Items string
 }
 
 var settingsSections = []settingsSection{
-	{Prefix: "radarr", Name: "Radarr", Eyebrow: "MOVIE MATCHING", Port: "7878"},
-	{Prefix: "sonarr", Name: "Sonarr", Eyebrow: "TV MATCHING", Port: "8989"},
+	{Prefix: "radarr", Name: "Radarr", Eyebrow: "MOVIE MATCHING", Port: "7878", Items: "movies"},
+	{Prefix: "sonarr", Name: "Sonarr", Eyebrow: "TV MATCHING", Port: "8989", Items: "shows"},
 }
 
 func settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -154,8 +155,8 @@ func (h *radarrHandlers) getSettings(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]radarrInstanceStatus{
-		"fourK": {URL: settings.FourK.URL, Configured: settings.FourK.APIKey != "", RootFolder: settings.FourK.RootFolder},
-		"hd":    {URL: settings.HD.URL, Configured: settings.HD.APIKey != "", RootFolder: settings.HD.RootFolder},
+		"fourK": {URL: settings.FourK.URL, Configured: settings.FourK.APIKey != "", RootFolder: settings.FourK.RootFolder, ExcludeOnDelete: settings.FourK.ExcludeOnDelete},
+		"hd":    {URL: settings.HD.URL, Configured: settings.HD.APIKey != "", RootFolder: settings.HD.RootFolder, ExcludeOnDelete: settings.HD.ExcludeOnDelete},
 	})
 }
 
