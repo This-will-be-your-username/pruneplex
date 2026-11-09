@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"net/http"
 	"path/filepath"
+
+	"pruneplex/internal/ratings"
 )
 
 //go:embed templates/*.html assets/*.css assets/*.js assets/*.svg
@@ -31,6 +33,8 @@ func newHandler(settings *radarrSettingsStore) http.Handler {
 	newRadarrHandlers(settings).register(mux)
 	newSonarrHandlers(sonarrSettings).register(mux)
 	newLidarrHandlers(newLidarrSettingsStore(settings)).register(mux)
+	ratingsSettings := newRatingsSettingsStore(settings)
+	newRatingsHandlers(ratingsSettings, ratings.NewService(ratingsCachePath(settings), ratingsSettings.get)).register(mux)
 	connector := newPlexConnector(settings)
 	connector.sonarr = sonarrSettings
 	connector.register(mux)

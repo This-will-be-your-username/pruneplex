@@ -563,6 +563,7 @@ function renderResults(analysis) {
   if (results) results.hidden = false;
   if (filterContainer) filterContainer.hidden = false;
   applySearch(); // keep any search text applied to the fresh rows
+  startRatingsLookup(analysis);
 }
 
 function setText(selector, value) {
@@ -648,6 +649,7 @@ function buildRow(movie, index, qualities) {
     if (isTV) movieItem.prepend(createStatusIcon(movie)); // to the left of the poster
     titleCell.append(movieItem);
     const ratingsCell = createRatingsCell(movie);
+    ratingsCells.set(movie, ratingsCell);
     const resolutionCell = document.createElement('td');
     resolutionCell.className = 'resolution-cell';
     const resolutionList = document.createElement('div');
@@ -697,6 +699,126 @@ doc?.querySelector('.tabs')?.addEventListener('keydown', (event) => {
 
 // --- Ratings UI ---
 
+/**
+ * Where a provider shows this movie. Uses the provider's own ID when we have
+ * one (IMDb, TMDB) and a title search otherwise (Rotten Tomatoes, Metacritic
+ * have no IDs from Plex). Returns '' when there is nowhere sensible to link.
+ */
+function ratingUrl(movie, rating) {
+  if (!movie || !rating) return '';
+  if (typeof rating.url === 'string' && /^https:\/\//.test(rating.url)) return rating.url;
+  const title = encodeURIComponent(movie.title || '');
+  const imdb = movie.imdbId ? encodeURIComponent(movie.imdbId) : '';
+  switch ((rating.source || '').toLowerCase()) {
+    case 'imdb':
+      return imdb ? `https://www.imdb.com/title/${imdb}/` : `https://www.imdb.com/find/?q=${title}&s=tt`;
+    case 'tmdb':
+    case 'themoviedb':
+      return movie.tmdbId ? `https://www.themoviedb.org/movie/${movie.tmdbId}` : `https://www.themoviedb.org/search?query=${title}`;
+    case 'rotten_tomatoes':
+    case 'rotten_tomatoes_audience':
+      return `https://www.rottentomatoes.com/search?search=${title}`;
+    case 'metacritic':
+      return `https://www.metacritic.com/search/${title}/?category=2`;
+    case 'trakt':
+      return imdb ? `https://trakt.tv/search/imdb/${imdb}` : `https://trakt.tv/search?query=${title}`;
+    default:
+      return '';
+  }
+}
+
+// The ratings cell of each row, so late-arriving ratings can replace it in place.
+const ratingsCells = new WeakMap();
+
+/** Add ratings Plex did not already supply (by source). Returns whether anything was added. */
+function mergeExtraRatings(movie, extras) {
+  if (!Array.isArray(extras) || !extras.length) return false;
+  if (!Array.isArray(movie.ratings)) movie.ratings = [];
+  let added = false;
+  for (const extra of extras) {
+    if (!movie.ratings.some((existing) => existing.source === extra.source)) {
+      movie.ratings.push(extra);
+      added = true;
+    }
+  }
+  return added;
+}
+
+function refreshRatingsCell(movie) {
+  const old = ratingsCells.get(movie);
+  if (!old || !old.isConnected) return;
+  const next = createRatingsCell(movie);
+  old.replaceWith(next);
+  ratingsCells.set(movie, next);
+}
+
+// --- Extra ratings (OMDb, Trakt), fetched in the background by the server ---
+
+const ratingsStatus = doc?.querySelector('#ratings-status');
+let ratingsRun = 0;
+
+function setRatingsStatus(text) {
+  if (ratingsStatus) ratingsStatus.textContent = text;
+}
+
+/**
+ * Ask the server for extra ratings for every movie in the analysis and keep
+ * asking, until all are in or a provider refuses (bad key, daily limit). The
+ * server caches what it finds, so this is quick the next time.
+ */
+function startRatingsLookup(analysis) {
+  const run = ++ratingsRun;
+  setRatingsStatus('');
+  if (isTV || !doc) return;
+  const byKey = new Map();
+  for (const list of [analysis.matches, analysis.only4k, analysis.onlyHd, analysis.other]) {
+    for (const movie of list || []) {
+      const key = movie.imdbId || (movie.tmdbId ? `tmdb:${movie.tmdbId}` : '');
+      if (!key) continue;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(movie);
+    }
+  }
+  if (byKey.size > 0) pollRatings(run, byKey, Array.from(byKey.keys()));
+}
+
+async function pollRatings(run, byKey, pendingKeys) {
+  if (run !== ratingsRun) return;
+  const items = pendingKeys.map((key) => {
+    const movie = byKey.get(key)[0];
+    return { key, imdbId: movie.imdbId || '', tmdbId: movie.tmdbId || 0 };
+  });
+  let data;
+  try {
+    data = await request('/api/ratings/lookup', { method: 'POST', body: JSON.stringify({ items }) });
+  } catch {
+    setRatingsStatus('');
+    return;
+  }
+  if (run !== ratingsRun || !data.configured) {
+    if (run === ratingsRun) setRatingsStatus('');
+    return;
+  }
+  const stillPending = [];
+  for (const [key, result] of Object.entries(data.ratings || {})) {
+    for (const movie of byKey.get(key) || []) {
+      if (mergeExtraRatings(movie, result.ratings)) refreshRatingsCell(movie);
+    }
+    if (!result.complete) stillPending.push(key);
+  }
+  const problems = Object.values(data.errors || {});
+  if (problems.length) {
+    setRatingsStatus(problems.join(' · '));
+    return;
+  }
+  if (stillPending.length === 0) {
+    setRatingsStatus('');
+    return;
+  }
+  setRatingsStatus(`Fetching extra ratings… ${byKey.size - stillPending.length}/${byKey.size}`);
+  setTimeout(() => pollRatings(run, byKey, stillPending), 4000);
+}
+
 function createRatingsCell(movie) {
   const cell = document.createElement('td');
   cell.className = 'ratings-cell';
@@ -714,7 +836,7 @@ function createRatingsCell(movie) {
   list.className = 'ratings-list';
 
   for (const rating of ratings) {
-    const badge = createRatingBadge(rating);
+    const badge = createRatingBadge(rating, movie);
     if (badge) {
       list.append(badge);
     }
@@ -732,13 +854,20 @@ function createRatingsCell(movie) {
   return cell;
 }
 
-function createRatingBadge(rating) {
+function createRatingBadge(rating, movie) {
   if (!rating || typeof rating.value !== 'number' || rating.value <= 0) {
     return null;
   }
 
-  const badge = document.createElement('span');
-  badge.className = 'rating-badge';
+  // Movie badges link out to the provider's page for the movie.
+  const href = movie && !isTV ? ratingUrl(movie, rating) : '';
+  const badge = document.createElement(href ? 'a' : 'span');
+  badge.className = href ? 'rating-badge is-link' : 'rating-badge';
+  if (href) {
+    badge.href = href;
+    badge.target = '_blank';
+    badge.rel = 'noopener noreferrer';
+  }
 
   const source = (rating.source || '').toLowerCase();
   const image = (rating.image || '').toLowerCase();
@@ -796,6 +925,14 @@ function createRatingBadge(rating) {
       badge.classList.add('rating-metacritic');
       badge.title = `Metacritic: ${score}/100`;
       badge.innerHTML = `<span class="rating-logo mc-logo">MC</span><span class="rating-score">${score}</span>`;
+      return badge;
+    }
+
+    case 'trakt': {
+      const score = Math.round(val <= 10 ? val * 10 : val);
+      badge.classList.add('rating-trakt');
+      badge.title = `Trakt: ${score}%`;
+      badge.innerHTML = `<span class="rating-logo trakt-logo">Trakt</span><span class="rating-score">${score}%</span>`;
       return badge;
     }
 
@@ -1391,6 +1528,7 @@ if (typeof module !== 'undefined' && module.exports) {
     getHDSize,
     compositeRating,
     letterFor,
+    ratingUrl,
   };
 }
 

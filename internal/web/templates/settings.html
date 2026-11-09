@@ -132,6 +132,47 @@
             </div>
           </form>
         </section>
+
+        <section class="settings-section" aria-labelledby="ratings-title">
+          <div class="settings-heading">
+            <div>
+              <div class="eyebrow muted">MOVIES</div>
+              <h2 id="ratings-title">Extra ratings</h2>
+            </div>
+            <span class="settings-message" id="ratings-message" role="status" aria-live="polite"></span>
+          </div>
+
+          <form id="ratings-settings-form">
+            <div class="settings-grid">
+              <fieldset class="settings-instance">
+                <legend>OMDb</legend>
+                <p class="instance-state" id="ratings-omdb-state">Not configured</p>
+                <p class="settings-help">Adds IMDb, Rotten Tomatoes and Metacritic scores. Get a free key at omdbapi.com (about 1,000 lookups a day).</p>
+                <label for="ratings-omdb-key">API key</label>
+                <input id="ratings-omdb-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key">
+                <div class="instance-actions">
+                  <button class="button button-danger" type="button" data-ratings-clear="omdb" hidden>Clear</button>
+                </div>
+              </fieldset>
+
+              <fieldset class="settings-instance">
+                <legend>Trakt</legend>
+                <p class="instance-state" id="ratings-trakt-state">Not configured</p>
+                <p class="settings-help">Adds the Trakt community rating. Create an app at trakt.tv/oauth/applications and paste its Client ID.</p>
+                <label for="ratings-trakt-key">Client ID</label>
+                <input id="ratings-trakt-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved ID">
+                <div class="instance-actions">
+                  <button class="button button-danger" type="button" data-ratings-clear="trakt" hidden>Clear</button>
+                </div>
+              </fieldset>
+            </div>
+
+            <div class="settings-save-row">
+              <p>Scores are looked up in the background after a scan and cached, so each movie is only fetched once. Each badge links to that site's page for the movie.</p>
+              <button class="button button-primary" id="save-ratings-settings" type="submit">Save ratings settings</button>
+            </div>
+          </form>
+        </section>
       </main>
     </div>
     <script src="/assets/settings.js" defer></script>

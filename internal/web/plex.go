@@ -702,7 +702,12 @@ func serverOptions(resources []plex.Resource) []serverOption {
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
-	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	return decodeJSONLimit(w, r, destination, 4096)
+}
+
+// decodeJSONLimit decodes one JSON value of at most limit bytes, rejecting unknown fields.
+func decodeJSONLimit(w http.ResponseWriter, r *http.Request, destination any, limit int64) error {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {

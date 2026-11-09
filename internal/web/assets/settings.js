@@ -287,3 +287,69 @@ function initLidarrForm(form) {
 
 const lidarrForm = document.querySelector('#lidarr-settings-form');
 if (lidarrForm) initLidarrForm(lidarrForm);
+
+// Extra ratings providers (OMDb, Trakt): a key each. Saved keys are never sent
+// back to the page, only whether one is set.
+function initRatingsForm(form) {
+  const message = document.querySelector('#ratings-message');
+  const saveButton = document.querySelector('#save-ratings-settings');
+  const providers = {
+    omdb: { input: document.querySelector('#ratings-omdb-key'), state: document.querySelector('#ratings-omdb-state'), name: 'OMDb' },
+    trakt: { input: document.querySelector('#ratings-trakt-key'), state: document.querySelector('#ratings-trakt-state'), name: 'Trakt' },
+  };
+
+  function showMessage(text, kind = '') {
+    message.textContent = text;
+    message.className = `settings-message ${kind}`.trim();
+  }
+
+  async function load() {
+    const configured = await request('/api/settings/ratings');
+    for (const [id, provider] of Object.entries(providers)) {
+      provider.state.textContent = configured[id] ? 'Configured' : 'Not configured';
+      provider.state.classList.toggle('configured', configured[id]);
+      form.querySelector(`[data-ratings-clear="${id}"]`).hidden = !configured[id];
+    }
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    saveButton.disabled = true;
+    showMessage('Saving…');
+    try {
+      await request('/api/settings/ratings', {
+        method: 'PUT',
+        body: JSON.stringify({ omdbKey: providers.omdb.input.value, traktClientId: providers.trakt.input.value }),
+      });
+      for (const provider of Object.values(providers)) provider.input.value = '';
+      await load();
+      showMessage('Ratings settings saved. New lookups start after your next scan.', 'success');
+    } catch (error) {
+      showMessage(error.message, 'error');
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+
+  form.querySelectorAll('[data-ratings-clear]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.ratingsClear;
+      if (!window.confirm(`Remove the saved ${providers[id].name} key?`)) return;
+      button.disabled = true;
+      try {
+        await request(`/api/settings/ratings/${id}`, { method: 'DELETE' });
+        await load();
+        showMessage(`${providers[id].name} key removed.`, 'success');
+      } catch (error) {
+        showMessage(error.message, 'error');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  load().catch((error) => showMessage(error.message, 'error'));
+}
+
+const ratingsForm = document.querySelector('#ratings-settings-form');
+if (ratingsForm) initRatingsForm(ratingsForm);
