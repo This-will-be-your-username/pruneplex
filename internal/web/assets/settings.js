@@ -165,3 +165,125 @@ function initSettingsForm(form) {
 }
 
 document.querySelectorAll('.arr-settings-form').forEach(initSettingsForm);
+
+// Lidarr is a single connection (no 4K/HD pair), so it has its own small form.
+function initLidarrForm(form) {
+  const message = document.querySelector('#lidarr-message');
+  const url = document.querySelector('#lidarr-url');
+  const apiKey = document.querySelector('#lidarr-key');
+  const state = document.querySelector('#lidarr-state');
+  const testButton = document.querySelector('#lidarr-test');
+  const clearButton = document.querySelector('#lidarr-clear');
+  const saveButton = document.querySelector('#save-lidarr-settings');
+
+  function showMessage(text, kind = '') {
+    message.textContent = text;
+    message.className = `settings-message ${kind}`.trim();
+  }
+
+  const folder = document.querySelector('#lidarr-folder');
+
+  function formatSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit += 1;
+    }
+    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+  }
+
+  // The header reports free space for one root folder; blank means automatic.
+  async function fillFolders(saved) {
+    folder.replaceChildren(new Option('Automatic (folder holding the most music)', ''));
+    if (!saved.configured) {
+      folder.options[0].textContent = 'Save the connection to choose a folder';
+      folder.disabled = true;
+      return;
+    }
+    folder.disabled = false;
+    let paths = [];
+    try {
+      const { folders } = await request('/api/settings/lidarr/rootfolders');
+      paths = folders.map((item) => item.path);
+      for (const item of folders) {
+        folder.append(new Option(`${item.path} (${formatSize(item.freeSpace)} free)`, item.path));
+      }
+    } catch {
+      // Lidarr unreachable: keep the saved choice selectable below.
+    }
+    if (saved.rootFolder && !paths.includes(saved.rootFolder)) {
+      folder.append(new Option(`${saved.rootFolder} (saved)`, saved.rootFolder));
+    }
+    folder.value = saved.rootFolder || '';
+  }
+
+  async function load() {
+    const saved = await request('/api/settings/lidarr');
+    url.value = saved.url || '';
+    state.textContent = saved.configured ? 'Configured' : 'Not configured';
+    state.classList.toggle('configured', saved.configured);
+    clearButton.hidden = !saved.configured;
+    await fillFolders(saved);
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    saveButton.disabled = true;
+    showMessage('Saving settings…');
+    try {
+      await request('/api/settings/lidarr', {
+        method: 'PUT',
+        body: JSON.stringify({ url: url.value, apiKey: apiKey.value, rootFolder: folder.value }),
+      });
+      apiKey.value = '';
+      await load();
+      showMessage('Lidarr settings saved.', 'success');
+    } catch (error) {
+      showMessage(error.message, 'error');
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+
+  testButton.addEventListener('click', async () => {
+    const originalText = testButton.textContent;
+    testButton.disabled = true;
+    testButton.textContent = 'Testing…';
+    showMessage('Testing Lidarr…');
+    try {
+      await request('/api/settings/lidarr/test', {
+        method: 'POST',
+        body: JSON.stringify({ instance: { url: url.value, apiKey: apiKey.value } }),
+      });
+      showMessage('Lidarr connection successful.', 'success');
+    } catch (error) {
+      showMessage(error.message, 'error');
+    } finally {
+      testButton.disabled = false;
+      testButton.textContent = originalText;
+    }
+  });
+
+  clearButton.addEventListener('click', async () => {
+    if (!window.confirm('Clear the Lidarr connection settings?')) return;
+    clearButton.disabled = true;
+    try {
+      await request('/api/settings/lidarr', { method: 'DELETE' });
+      apiKey.value = '';
+      await load();
+      showMessage('Lidarr connection cleared.', 'success');
+    } catch (error) {
+      showMessage(error.message, 'error');
+    } finally {
+      clearButton.disabled = false;
+    }
+  });
+
+  load().catch((error) => showMessage(error.message, 'error'));
+}
+
+const lidarrForm = document.querySelector('#lidarr-settings-form');
+if (lidarrForm) initLidarrForm(lidarrForm);

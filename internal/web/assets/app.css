@@ -420,12 +420,12 @@ td.is-top-4k {
 
 /* Title search and the A-Z index */
 .results-search { display: flex; align-items: center; gap: 12px; padding: 14px 0 4px; }
-.results-search input {
+.results-search input[type="search"] {
   width: min(340px, 100%); height: 34px; padding: 0 12px;
   background: #111; color: #e6e6e6; border: 1px solid #484848; border-radius: 4px; font: 12px var(--sans);
 }
-.results-search input:focus { outline: 2px solid var(--green); outline-offset: 1px; }
-.results-search input::placeholder { color: #888; }
+.results-search input[type="search"]:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+.results-search input[type="search"]::placeholder { color: #888; }
 .search-note { color: #aaa; font: 10px var(--mono); }
 tr.search-hidden { display: none; }
 .table-scroll tbody tr { scroll-margin-top: 16px; }
@@ -443,3 +443,40 @@ tr.search-hidden { display: none; }
 .alpha-index button:hover:not(:disabled) { background: var(--green); color: #17120a; }
 .alpha-index button:disabled { color: #555; cursor: default; }
 @media (max-width: 900px), (max-height: 560px) { .alpha-index { display: none; } }
+
+/* Music nav icon: a note */
+.music-icon::before { position: absolute; content: ''; left: 2px; bottom: 2px; width: 7px; height: 5px; border: 1.5px solid currentColor; border-radius: 50%; background: currentColor; }
+.music-icon::after { position: absolute; content: ''; left: 7px; top: 1px; width: 6px; height: 11px; border-right: 1.5px solid currentColor; border-top: 1.5px solid currentColor; }
+
+/* Music page: collapsible artists with their albums */
+.inline-check { display: inline-flex; align-items: center; gap: 7px; color: #ccc; font-size: 11px; cursor: pointer; }
+.inline-check input { width: 13px; height: 13px; margin: 0; padding: 0; accent-color: var(--green); }
+.artist-list { margin-top: 12px; }
+details.artist { border-top: 1px solid var(--line); }
+details.artist:last-child { border-bottom: 1px solid var(--line); }
+.artist-summary { display: flex; align-items: center; gap: 14px; padding: 10px 6px; cursor: pointer; list-style: none; }
+.artist-summary::-webkit-details-marker { display: none; }
+.artist-summary::before { content: '▸'; color: #888; font-size: 11px; width: 10px; transition: transform 120ms ease; }
+details.artist[open] > .artist-summary::before { transform: rotate(90deg); }
+.artist-summary:hover { background: #1c1c1c; }
+.artist-names { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.artist-name { font-size: 13px; font-weight: 800; }
+.artist-meta, .album-meta { color: #999; font: 10px var(--mono); }
+.cover-wrap { position: relative; display: inline-block; flex: 0 0 auto; border-radius: 4px; overflow: hidden; background: #1e1e1e; }
+.cover-wrap img, .cover-wrap .cover-fallback { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.artist-cover { width: 36px; height: 36px; border-radius: 50%; }
+.album-cover { width: 40px; height: 40px; }
+.album-list { list-style: none; margin: 0; padding: 0 0 10px 38px; }
+.album-row { display: flex; align-items: center; gap: 14px; padding: 7px 6px; border-top: 1px solid #262626; }
+.album-row.is-empty { opacity: .55; }
+.album-info { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.album-title { font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.album-tracks, .album-size { color: #aaa; font: 10px var(--mono); white-space: nowrap; min-width: 70px; text-align: right; }
+.chip { display: inline-block; padding: 2px 7px; border-radius: 10px; font: 700 9px var(--mono); text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; background: #2a2a2a; color: #aaa; }
+.chip-continuing { background: #17352b; color: #52b788; }
+.chip-ended { background: #3a1f1f; color: #e05a5a; }
+.chip-muted { background: #2a2a2a; color: #999; }
+.album-delete { flex: 0 0 auto; }
+.album-delete:disabled { opacity: .45; cursor: default; }
+@media (max-width: 700px) { .album-tracks, .album-size { display: none; } .album-list { padding-left: 12px; } }
+.artist-delete { flex: 0 0 auto; margin-left: auto; }

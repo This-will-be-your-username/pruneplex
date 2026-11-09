@@ -30,10 +30,12 @@ func newHandler(settings *radarrSettingsStore) http.Handler {
 	mux.HandleFunc("GET /healthz", health)
 	newRadarrHandlers(settings).register(mux)
 	newSonarrHandlers(sonarrSettings).register(mux)
+	newLidarrHandlers(newLidarrSettingsStore(settings)).register(mux)
 	connector := newPlexConnector(settings)
 	connector.sonarr = sonarrSettings
 	connector.register(mux)
 	mux.HandleFunc("GET /tv", tvIndex)
+	mux.HandleFunc("GET /music", musicIndex)
 	mux.HandleFunc("GET /", index)
 	return mux
 }
@@ -96,4 +98,11 @@ func renderOverview(w http.ResponseWriter, data overviewPage) {
 func health(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func musicIndex(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := page.ExecuteTemplate(w, "music.html", nil); err != nil {
+		http.Error(w, "could not render page", http.StatusInternalServerError)
+	}
 }

@@ -23,6 +23,9 @@
             <a class="nav-button" href="/tv">
               <span class="nav-icon tv-icon" aria-hidden="true"></span>TV Shows
             </a>
+            <a class="nav-button" href="/music">
+              <span class="nav-icon music-icon" aria-hidden="true"></span>Music
+            </a>
             <a class="nav-button active" href="/settings" aria-current="page">
               <span class="nav-icon settings-icon" aria-hidden="true"></span>Settings
             </a>
@@ -94,6 +97,41 @@
         </section>
         {{end}}
 
+        <section class="settings-section" aria-labelledby="lidarr-title">
+          <div class="settings-heading">
+            <div>
+              <div class="eyebrow muted">MUSIC</div>
+              <h2 id="lidarr-title">Lidarr</h2>
+            </div>
+            <span class="settings-message" id="lidarr-message" role="status" aria-live="polite"></span>
+          </div>
+
+          <form id="lidarr-settings-form">
+            <div class="settings-grid">
+              <fieldset class="settings-instance">
+                <legend>Lidarr</legend>
+                <p class="instance-state" id="lidarr-state">Not configured</p>
+                <label for="lidarr-url">Server URL</label>
+                <input id="lidarr-url" type="url" placeholder="http://lidarr:8686" autocomplete="url">
+                <label for="lidarr-key">API key</label>
+                <input id="lidarr-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved key">
+                <label for="lidarr-folder">Folder for free space</label>
+                <select id="lidarr-folder" disabled>
+                  <option value="">Save the connection to choose a folder</option>
+                </select>
+                <div class="instance-actions">
+                  <button class="button button-secondary" type="button" id="lidarr-test">Test connection</button>
+                  <button class="button button-danger" type="button" id="lidarr-clear" hidden>Clear</button>
+                </div>
+              </fieldset>
+            </div>
+
+            <div class="settings-save-row">
+              <p>Deleting an album removes its tracks and stops monitoring it; the album stays in Lidarr.</p>
+              <button class="button button-primary" id="save-lidarr-settings" type="submit">Save Lidarr settings</button>
+            </div>
+          </form>
+        </section>
       </main>
     </div>
     <script src="/assets/settings.js" defer></script>
