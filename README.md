@@ -179,7 +179,7 @@ the most music; connect Lidarr and pick another under **Settings**.
 
 ## Setup
 
-1. Run PrunePlex (see [Running](#running)) and open http://localhost:8081.
+1. Run PrunePlex (see [Running](#running)) and open http://localhost:4848.
 2. Go to **Settings** and enter the URL and API key for your 4K and/or HD Radarr
    (movies) and Sonarr (TV) instances. Without these, scanning still works but
    the Radarr/Sonarr columns show "Configure" and nothing can be deleted. Once
@@ -204,10 +204,11 @@ choices are saved in `radarr-matches.json` and reused on later scans.
 
 ## Security
 
-- PrunePlex has **no login of its own** and listens on all network interfaces
-  (`:8081`). Anyone who can reach the port can use your saved Plex session and
-  delete movies through your Radarr. Run it on a trusted network or behind a
-  reverse proxy or firewall that restricts access.
+- PrunePlex has **no login of its own** and, run directly, listens on all network
+  interfaces (`:4848`) unless you set `PRUNEPLEX_BIND_ADDRESS` (the Docker setup
+  publishes it on `127.0.0.1` only by default). Anyone who can reach the port can
+  use your saved Plex session and delete movies through your Radarr. Run it on a
+  trusted network or behind a reverse proxy or firewall that restricts access.
 - Your Plex token and Radarr API keys are stored in plaintext JSON
   (`plex.json`, `radarr.json`, `sonarr.json`, `lidarr.json`, `ratings.json`; manual matches go in
   `radarr-matches.json` and `sonarr-matches.json`; looked-up ratings are cached in
@@ -235,10 +236,23 @@ commands work on Windows, macOS and Linux.
 
 ## Running
 
+PrunePlex runs two ways, and both are fully supported. They are the same program
+with the same features and settings, so pick whichever suits you:
+
+| | Direct executable | Docker Compose |
+| --- | --- | --- |
+| What you need | Nothing: a single file | Docker with Compose |
+| Platforms | Windows, macOS, Linux (Intel/AMD and ARM) | Anywhere Docker runs |
+| Good for | Trying it out, a desktop, a machine without Docker | An always-on server, resource limits, isolation |
+| Starts at boot | You arrange it (service, task scheduler, launchd...) | Compose's `restart: unless-stopped` |
+| Jump to | [Direct executable](#direct-executable) | [Docker Compose](#docker-compose) |
+
+### Direct executable
+
 Download the binary for your platform from the
 [Releases](https://github.com/This-will-be-your-username/pruneplex/releases)
 page (or build it yourself, see above), then start it and open
-http://localhost:8081. Release files are named
+http://localhost:4848. Release files are named
 `pruneplex-<version>-<os>-<arch>`; locally built ones omit the version.
 
 | Platform | `<os>-<arch>` |
@@ -250,7 +264,7 @@ http://localhost:8081. Release files are named
 **Windows (PowerShell)**
 
 ```powershell
-$env:PORT = "8081"   # optional, defaults to 8081
+$env:PRUNEPLEX_PORT = "4848"   # optional, defaults to 4848
 .\pruneplex-windows-amd64.exe
 ```
 
@@ -262,14 +276,14 @@ SmartScreen may warn about an unsigned download: choose *More info*, then
 ```sh
 chmod +x pruneplex-darwin-arm64
 xattr -d com.apple.quarantine pruneplex-darwin-arm64   # clear Gatekeeper's block on downloads
-PORT=8081 ./pruneplex-darwin-arm64                     # PORT is optional
+PRUNEPLEX_PORT=4848 ./pruneplex-darwin-arm64            # optional
 ```
 
 **Linux**
 
 ```sh
 chmod +x pruneplex-linux-amd64
-PORT=8081 ./pruneplex-linux-amd64                      # PORT is optional
+PRUNEPLEX_PORT=4848 ./pruneplex-linux-amd64             # optional
 ```
 
 **From source (any platform with Go)**
@@ -280,6 +294,73 @@ go run ./cmd/server
 
 Stop it with Ctrl+C. Settings and saved logins live in the config directory
 described under [Security](#security).
+
+**Environment variables.** The server is configured only through these, whether
+you run the binary directly or through Docker:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PRUNEPLEX_PORT` | `4848` | The port to listen on. (`PORT` is also accepted.) |
+| `PRUNEPLEX_BIND_ADDRESS` | all interfaces | The address to listen on, e.g. `127.0.0.1` to accept connections from this machine only. |
+| `PRUNEPLEX_CONFIG` | your user config folder | Path of `radarr.json`; the other settings files are stored beside it. |
+
+### Docker Compose
+
+For an always-on install, run it in a container. The image is built from a static
+binary on an empty `scratch` base (no OS, no shell), so it is only a few MB and
+idles at the Go runtime's own small footprint.
+
+```sh
+docker compose up -d --build   # build and start
+docker compose logs -f         # follow the log
+docker compose down            # stop; settings and logins are kept
+```
+
+Then open http://localhost:4848.
+
+**Resource use.** [`compose.yaml`](compose.yaml) is tuned to stay small: 128 MB
+of memory (no swap) with `GOMEMLIMIT=100MiB` so Go's garbage collector works
+harder before the limit is ever reached, 0.5 CPU (Go sizes its threads to the
+limit automatically), a process cap, and a trimmed log size. PrunePlex is idle
+almost all the time, so these only cap rare busy moments such as scanning a large
+library. If the container is ever killed for memory
+(`docker inspect pruneplex --format '{{.State.OOMKilled}}'` says `true`), raise
+`mem_limit` and `GOMEMLIMIT` together. The image also runs read-only, as an
+unprivileged user, with every Linux capability dropped.
+
+**Your data** lives in the `config` volume (`/config` in the container): the Plex
+sign-in, Radarr/Sonarr/Lidarr connections, manual matches and the ratings cache.
+To use a folder instead of the named volume, change it to `./config:/config` and
+run `sudo chown 65532:65532 ./config` once, since the container runs as that user.
+
+**Networking.** Inside the container `localhost` means the container itself. In
+**Settings**, point Radarr, Sonarr and Lidarr at their container names (if they
+share a compose network with PrunePlex) or at the host's address; do the same for
+a Plex server running outside Docker.
+
+**Access.** PrunePlex has no login of its own, so the compose file publishes it
+on `127.0.0.1` only. The address and the port are two separate environment
+variables, read when you run compose (the defaults are written into the `ports:`
+line of `compose.yaml`, so you can also edit them there):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PRUNEPLEX_BIND_ADDRESS` | `127.0.0.1` | The address on the host the port is published on. `0.0.0.0` makes it reachable from your network; or use one specific address of the host. |
+| `PRUNEPLEX_PORT` | `4848` | The port, on the host and inside the container. |
+
+```sh
+PRUNEPLEX_BIND_ADDRESS=0.0.0.0 PRUNEPLEX_PORT=9000 docker compose up -d
+```
+
+```powershell
+$env:PRUNEPLEX_BIND_ADDRESS = "0.0.0.0"; docker compose up -d
+```
+
+Set them on every `docker compose up` (or edit the defaults in `compose.yaml`),
+since a later `up` without them goes back to the defaults. If you do expose it,
+put it behind a reverse proxy or firewall.
+
+**Updating.** `git pull && docker compose up -d --build`.
 
 ## Tests
 
