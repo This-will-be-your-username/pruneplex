@@ -42,6 +42,8 @@ func TestLidarrAlbumPruneUnmonitorsThenDeletesTracksButKeepsTheAlbum(t *testing.
 			w.Write([]byte(`[
 				{"id":10,"artistId":1,"title":"Old","releaseDate":"1999-01-01T00:00:00Z","monitored":true,"statistics":{"trackFileCount":2,"trackCount":2,"sizeOnDisk":200}},
 				{"id":11,"artistId":1,"title":"New","releaseDate":"2010-01-01T00:00:00Z","monitored":true,"statistics":{"trackFileCount":1,"trackCount":9,"sizeOnDisk":100}}]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rootfolder":
+			w.Write([]byte(`[]`)) // the library also asks for free space; none reported here
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/trackfile":
 			w.Write([]byte(`[{"id":100,"albumId":10,"size":120},{"id":101,"albumId":10,"size":80}]`))
 		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/album/monitor":
