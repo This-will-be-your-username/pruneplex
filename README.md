@@ -60,10 +60,14 @@ folder's free space is reported.
    different entries, so each looks like a single-resolution movie. Each of the
    Only 4K / Only HD tabs shows the Radarr column for its own instance, ready for
    pruning; the Multiple resolutions and Other tabs show both.
-3. **Review.** Each row shows the poster, title and year, rating badges (Rotten
-   Tomatoes critic/audience, IMDb, TMDB, Metacritic and others, whatever Plex
-   has), the resolutions present, and the matching movie in each configured
-   Radarr instance with its size on disk. Beside the library name, the header
+3. **Review.** Each row shows the poster, title and year, rating badges, the
+   resolutions present, and the matching movie in each configured
+   Radarr instance with its size on disk. On the Movies page the badges come from
+   Plex (which often supplies just one source per library, such as
+   Rotten Tomatoes *or* IMDb) plus optional OMDb and Trakt lookups that fill in the
+   rest, and each one links to that site's page for the movie (see
+   [Ratings and where they link](#ratings-and-where-they-link)).
+   Beside the library name, the header
    totals what each configured 4K/HD Radarr (or Sonarr) instance has on disk and
    the free space of the folder holding its media (hover for the path). A match you picked by hand shows a small
    **×** next to its title to clear it again.
@@ -78,6 +82,27 @@ folder's free space is reported.
 5. **Prune.** Each matched row has a **Delete 4K** / **Delete HD** button. It
    asks for confirmation, then tells that Radarr instance to remove the movie
    **and delete its files from disk**. This cannot be undone from PrunePlex.
+
+### Ratings and where they link
+
+On the Movies page every rating badge is a link to that site's page for the
+movie: IMDb and TMDB by ID, Trakt by its own page, and Rotten Tomatoes and
+Metacritic (which Plex gives no IDs for) to a title search.
+
+Plex supplies Rotten Tomatoes, IMDb and TMDB scores. You can add more by saving
+a free key under **Settings → Extra ratings**:
+
+- **OMDb** adds IMDb, Rotten Tomatoes and **Metacritic** scores (about 1,000
+  lookups a day on the free tier).
+- **Trakt** adds the **Trakt** community rating (a client ID from an app you
+  create at trakt.tv).
+
+After each scan the new scores are looked up in the background, slowly, and
+fill into the badges as they arrive (a small "Fetching extra ratings…" note shows
+progress). Results are cached on disk for 30 days, so each movie is only fetched
+once and later scans are instant. If OMDb's daily limit is hit, PrunePlex says so
+and picks up the rest later. Scores Plex already provides are never duplicated.
+They also feed the "20% lowest rated" filter.
 
 ### Ways to trim
 
@@ -165,6 +190,8 @@ the most music; connect Lidarr and pick another under **Settings**.
    checkbox: when ticked, anything you delete through PrunePlex is also added to
    that instance's import exclusions, so a list cannot bring it back. For the
    **Music** page, just connect Lidarr in the Lidarr section; Plex is not involved.
+   Optionally, under **Extra ratings** add a free OMDb key and/or a Trakt client ID
+   to show more ratings on the Movies page.
 3. Back on **Movies** (or **TV Shows**), click **Connect Plex**, choose your server, pick a
    library and click **Analyze movies**.
 
@@ -182,8 +209,9 @@ choices are saved in `radarr-matches.json` and reused on later scans.
   delete movies through your Radarr. Run it on a trusted network or behind a
   reverse proxy or firewall that restricts access.
 - Your Plex token and Radarr API keys are stored in plaintext JSON
-  (`plex.json`, `radarr.json`, `sonarr.json`, `lidarr.json`; manual matches go in
-  `radarr-matches.json` and `sonarr-matches.json`) in the config directory with owner-only
+  (`plex.json`, `radarr.json`, `sonarr.json`, `lidarr.json`, `ratings.json`; manual matches go in
+  `radarr-matches.json` and `sonarr-matches.json`; looked-up ratings are cached in
+  `ratings-cache.json`) in the config directory with owner-only
   permissions: `%AppData%\pruneplex` on Windows,
   `~/.config/pruneplex` on Linux, `~/Library/Application Support/pruneplex` on
   macOS. Set `PRUNEPLEX_CONFIG` to the path of `radarr.json` to move them
