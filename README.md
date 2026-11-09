@@ -68,7 +68,11 @@ folder's free space is reported.
 4. **Narrow down** (Multiple resolutions tab). Filter to the top 20% largest 4K
    or HD files, the 20% lowest-rated movies, movies where the HD file is larger
    than the 4K one, or where the 4K file is within 10% of the HD size. Pick a
-   filter and click Apply; Clear shows everything again.
+   filter and click Apply; Clear shows everything again. The **search box** above
+   the tabs hides every row whose title (or year) lacks what you type, across all
+   tabs and alongside the filter, and the **A-Z strip** on the right jumps to the
+   first title starting with a letter (# covers numbers and symbols; letters with
+   no title in the current tab are dimmed).
 5. **Prune.** Each matched row has a **Delete 4K** / **Delete HD** button. It
    asks for confirmation, then tells that Radarr instance to remove the movie
    **and delete its files from disk**. This cannot be undone from PrunePlex.

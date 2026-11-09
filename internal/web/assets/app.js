@@ -304,6 +304,7 @@ disconnectButton?.addEventListener('click', async () => {
   updateHeading();
   if (serverPicker) serverPicker.hidden = true;
   if (results) results.hidden = true;
+  refreshAlphabet();
   if (highlightInfo) highlightInfo.hidden = true;
   if (filterContainer) filterContainer.hidden = true;
   currentAnalysis = null;
@@ -332,15 +333,111 @@ analyzeButton?.addEventListener('click', async () => {
   }
 });
 
+// --- Title search and A-Z index ---
+
+const searchInput = doc?.querySelector('#result-search');
+const searchNote = doc?.querySelector('#search-note');
+const alphaIndex = doc?.querySelector('#alpha-index');
+const ALPHABET = ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
+// Tab name -> the table body holding its rows (matches the tab ids in the page).
+const RESULT_BODIES = {
+  multi: '#plex-results-body',
+  only4k: '#only4k-body',
+  onlyhd: '#onlyhd-body',
+  other: '#other-body',
+};
+
+/** The index letter a title files under: A-Z, or # for numbers and symbols. */
+function letterFor(title) {
+  const plain = String(title ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const first = /[A-Za-z0-9]/.exec(plain)?.[0];
+  return first && /[A-Za-z]/.test(first) ? first.toUpperCase() : '#';
+}
+
+function searchQuery() {
+  return (searchInput?.value || '').trim().toLowerCase();
+}
+
+function activeTabName() {
+  return doc?.querySelector('.tab.active')?.dataset.tab || 'multi';
+}
+
+/** Rows of a tab that are currently shown (not removed by the filter or the search). */
+function visibleRows(tab) {
+  const body = doc?.querySelector(RESULT_BODIES[tab]);
+  return body ? Array.from(body.rows).filter((row) => !row.hidden && !row.classList.contains('search-hidden')) : [];
+}
+
+/**
+ * Visually hide every row whose title (or year) does not contain the search text.
+ * Uses its own class, so it combines with the Multiple resolutions filter
+ * instead of fighting it.
+ */
+function applySearch() {
+  const query = searchQuery();
+  for (const [tab, selector] of Object.entries(RESULT_BODIES)) {
+    const body = doc?.querySelector(selector);
+    if (!body) continue;
+    const rows = Array.from(body.rows);
+    for (const row of rows) {
+      row.classList.toggle('search-hidden', query !== '' && !(row.dataset.search || '').includes(query));
+    }
+    const shown = rows.filter((row) => !row.classList.contains('search-hidden')).length;
+    setText(`#count-${tab}`, query ? `${shown}/${rows.length}` : rows.length);
+  }
+  refreshAlphabet();
+}
+
+/** Enable only the letters that have a visible row in the current tab. */
+function refreshAlphabet() {
+  if (!alphaIndex) return;
+  alphaIndex.hidden = !results || results.hidden;
+  const rows = visibleRows(activeTabName());
+  const present = new Set(rows.map((row) => row.dataset.letter));
+  for (const button of alphaIndex.querySelectorAll('button')) {
+    button.disabled = !present.has(button.dataset.letter);
+  }
+  if (searchNote) {
+    searchNote.textContent = searchQuery() && rows.length === 0 ? 'No matches in this tab' : '';
+  }
+}
+
+if (alphaIndex) {
+  for (const letter of ALPHABET) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.letter = letter;
+    button.textContent = letter;
+    button.setAttribute('aria-label', letter === '#' ? 'Jump to numbers and symbols' : `Jump to ${letter}`);
+    alphaIndex.append(button);
+  }
+  alphaIndex.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-letter]');
+    if (!button || button.disabled) return;
+    const row = visibleRows(activeTabName()).find((r) => r.dataset.letter === button.dataset.letter);
+    row?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+searchInput?.addEventListener('input', applySearch);
+searchInput?.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && searchInput.value) {
+    searchInput.value = '';
+    applySearch();
+  }
+});
+
 // --- Filter UI ---
 
 applyFilterBtn?.addEventListener('click', () => {
   const val = filterSelect ? filterSelect.value : '';
   if (val) applyFilter(val);
+  refreshAlphabet();
 });
 
 clearFilterBtn?.addEventListener('click', () => {
   clearFilter();
+  refreshAlphabet();
 });
 
 function clearFilter() {
@@ -465,6 +562,7 @@ function renderResults(analysis) {
   setText('#count-multi', analysis.matches.length);
   if (results) results.hidden = false;
   if (filterContainer) filterContainer.hidden = false;
+  applySearch(); // keep any search text applied to the fresh rows
 }
 
 function setText(selector, value) {
@@ -498,6 +596,8 @@ function buildRow(movie, index, qualities) {
       row.dataset.hdSize = String(hdSize);
     }
     row.dataset.movieIndex = String(index);
+    row.dataset.search = `${movie.title} ${movie.year || ''}`.toLowerCase();
+    row.dataset.letter = letterFor(movie.title);
 
     const titleCell = document.createElement('th');
     titleCell.scope = 'row';
@@ -578,6 +678,7 @@ function activateTab(name) {
   for (const panel of doc?.querySelectorAll('.tab-panel') ?? []) {
     panel.hidden = panel.id !== `panel-${name}`;
   }
+  refreshAlphabet();
 }
 
 doc?.querySelector('.tabs')?.addEventListener('click', (event) => {
@@ -1289,6 +1390,7 @@ if (typeof module !== 'undefined' && module.exports) {
     get4KSize,
     getHDSize,
     compositeRating,
+    letterFor,
   };
 }
 

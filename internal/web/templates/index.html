@@ -54,6 +54,10 @@
             <button class="button button-primary" id="plex-server-connect" type="button">Use this server</button>
           </div>
           <div class="results" id="plex-results" hidden>
+            <div class="results-search">
+              <input type="search" id="result-search" placeholder="Search titles…" aria-label="Search titles" autocomplete="off">
+              <span class="search-note" id="search-note" role="status" aria-live="polite"></span>
+            </div>
             <div class="tabs" role="tablist" aria-label="Movie categories">
               <button class="tab active" id="tab-multi" type="button" role="tab" aria-selected="true" aria-controls="panel-multi" data-tab="multi">Multiple resolutions <span class="tab-count" id="count-multi"></span></button>
               <button class="tab" id="tab-only4k" type="button" role="tab" aria-selected="false" aria-controls="panel-only4k" data-tab="only4k" tabindex="-1">Only 4K <span class="tab-count" id="count-only4k"></span></button>
@@ -138,6 +142,7 @@
 
       </main>
     </div>
+    <nav class="alpha-index" id="alpha-index" aria-label="Jump to letter" hidden></nav>
     <script src="/assets/app.js" defer></script>
   </body>
 </html>
