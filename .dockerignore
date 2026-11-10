@@ -10,6 +10,8 @@ node_modules
 package.json
 Dockerfile
 compose.yaml
+compose.build.yaml
+config
 .dockerignore
 .env
 .env.*

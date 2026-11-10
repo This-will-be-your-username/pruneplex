@@ -1,0 +1,6 @@
+# PrunePlex keeps its settings here when run with compose.yaml: the Plex token,
+# Radarr/Sonarr/Lidarr API keys, manual matches and the ratings cache. These are
+# private, so nothing in this folder is ever committed (except this file, which
+# keeps the folder in the repository).
+*
+!.gitignore

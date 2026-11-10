@@ -1,29 +1,31 @@
 # PrunePlex, tuned to stay small: it is idle almost all of the time, so the limits
-# below are about stopping a rare busy moment (a big scan) from ever growing into
-# a problem, not about squeezing normal use.
+# below only stop a rare busy moment (a big scan) from growing into a problem.
 #
-#   docker compose up -d --build     start (builds the image the first time)
-#   docker compose logs -f           follow the log
-#   docker compose down              stop (settings and logins are kept)
+#   docker compose up -d       start (pulls the image the first time)
+#   docker compose logs -f     follow the log
+#   docker compose down        stop (settings and logins are kept in ./config)
 #
 # Then open http://localhost:4848.
 
 services:
   pruneplex:
-    build: .
-    image: pruneplex:local
+    image: ghcr.io/this-will-be-your-username/pruneplex:latest
     container_name: pruneplex
     restart: unless-stopped
+
+    # The container runs as this user. The image's own user is 65532, so ./config
+    # must be writable by it (Linux: sudo chown 65532:65532 ./config), or run as
+    # yourself instead: PRUNEPLEX_UID=$(id -u) PRUNEPLEX_GID=$(id -g) docker compose up -d
+    user: "${PRUNEPLEX_UID:-65532}:${PRUNEPLEX_GID:-65532}"
 
     ports:
       # <address on this machine>:<port on this machine>:<port in the container>
       #
-      # The address and the port are separate environment variables, read when you
-      # run compose; the values after ":-" are the defaults:
+      # Read from the environment when you run compose; the values after ":-" are
+      # the defaults:
       #   PRUNEPLEX_BIND_ADDRESS  127.0.0.1 (this machine only)
       #   PRUNEPLEX_PORT          4848
       # For example:  PRUNEPLEX_BIND_ADDRESS=0.0.0.0 docker compose up -d
-      # or edit the defaults on the line below.
       #
       # PrunePlex has no login of its own and can delete media through Radarr,
       # Sonarr and Lidarr, so it is only reachable from this machine unless you
@@ -34,13 +36,9 @@ services:
 
     volumes:
       # Everything PrunePlex saves: Plex sign-in, Radarr/Sonarr/Lidarr connections,
-      # manual matches and the ratings cache. Back this up; losing it only means
-      # signing in and re-entering settings again.
-      #
-      # A named volume is used because the image's /config is owned by the
-      # unprivileged user (uid 65532). To use a folder instead, replace this with
-      # ./config:/config and run: sudo chown 65532:65532 ./config
-      - config:/config
+      # manual matches and the ratings cache. These are private (they hold your
+      # Plex token and API keys): back them up, never share or commit them.
+      - ./config:/config
 
     environment:
       # Memory: a soft target for the Go garbage collector, set a little under the
@@ -54,8 +52,8 @@ services:
       # other containers by name (same compose network) or at the host's address.
 
     # --- resource limits ---
-    # Idle, PrunePlex sits around 10-20 MB. Scanning a large library or loading a
-    # huge Lidarr collection briefly needs more; raise these if you see it killed
+    # Idle, PrunePlex is small. Scanning a large library or loading a huge Lidarr
+    # collection briefly needs more; raise these if it is ever killed
     # (docker inspect pruneplex --format '{{.State.OOMKilled}}').
     mem_limit: 128m
     memswap_limit: 128m # no swap: a runaway should be stopped, not slow the host
@@ -75,6 +73,3 @@ services:
       options:
         max-size: "2m"
         max-file: "2"
-
-volumes:
-  config:
