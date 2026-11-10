@@ -318,6 +318,41 @@ docker compose down            # stop; settings and logins are kept
 
 Then open http://localhost:4848.
 
+**Pull the published image instead of building it.** Images for `linux/amd64`
+and `linux/arm64` are published to GitHub's container registry as
+`ghcr.io/this-will-be-your-username/pruneplex`, tagged `latest` (newest stable
+release), a version such as `1.2.0`, `1.2` or `1`, and `edge` (the latest build of
+`main`). With no clone needed, save this as `compose.yaml` and run
+`docker compose up -d`:
+
+```yaml
+services:
+  pruneplex:
+    image: ghcr.io/this-will-be-your-username/pruneplex:latest
+    container_name: pruneplex
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4848:4848"   # address:host port:container port
+    volumes:
+      - config:/config
+    environment:
+      GOMEMLIMIT: 100MiB
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: 0.5
+    pids_limit: 128
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+volumes:
+  config:
+```
+
+Or without compose: `docker run -d --name pruneplex -p 127.0.0.1:4848:4848 -v pruneplex-config:/config ghcr.io/this-will-be-your-username/pruneplex:latest`.
+Update with `docker compose pull && docker compose up -d`. The rest of this
+section describes the settings in the repository's own `compose.yaml`, which
+builds the image from source.
+
 **Resource use.** [`compose.yaml`](compose.yaml) is tuned to stay small: 128 MB
 of memory (no swap) with `GOMEMLIMIT=100MiB` so Go's garbage collector works
 harder before the limit is ever reached, 0.5 CPU (Go sizes its threads to the
