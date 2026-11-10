@@ -76,15 +76,27 @@ jobs:
   docker:
     needs: test
     runs-on: ubuntu-latest
+    env:
+      # compose.yaml pulls the published image; layer the build override over it so
+      # CI tests the image built from this commit, not the one already published.
+      COMPOSE_FILE: compose.yaml:compose.build.yaml
     steps:
       - uses: actions/checkout@v7
+      - name: The README template matches compose.yaml
+        run: |
+          awk '/<!-- compose:start -->/{f=1;next} /<!-- compose:end -->/{f=0} f' README.md \
+            | sed '1d;$d' | diff -u - compose.yaml
       - name: Validate and build
         run: |
+          COMPOSE_FILE=compose.yaml docker compose config -q
           docker compose config -q
           docker compose build
           docker image ls pruneplex:local --format 'image size: {{.Size}}'
       - name: Start and wait for healthy
         run: |
+          # ./config is created by the checkout and owned by the runner user, so run
+          # the container as that user (the documented alternative to a chown).
+          export PRUNEPLEX_UID="$(id -u)" PRUNEPLEX_GID="$(id -g)"
           docker compose up -d
           status=starting
           for i in $(seq 1 30); do
