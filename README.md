@@ -306,82 +306,141 @@ you run the binary directly or through Docker:
 
 ### Docker Compose
 
-For an always-on install, run it in a container. The image is built from a static
-binary on an empty `scratch` base (no OS, no shell), so it is only a few MB and
-idles at the Go runtime's own small footprint.
+For an always-on install, run it in a container. The image is a static binary on
+an empty `scratch` base (no OS, no shell), so it is only a few MB and idles at the
+Go runtime's own small footprint. Images for `linux/amd64` and `linux/arm64` are
+published to GitHub's container registry as
+`ghcr.io/this-will-be-your-username/pruneplex`, tagged `latest` (newest stable
+release) and by version (`1.2.1`, `1.2`, `1`).
+
+**Quick start.** Save the template below as `compose.yaml` (or clone this
+repository, which already has it and an empty `config/` folder), then:
 
 ```sh
-docker compose up -d --build   # build and start
-docker compose logs -f         # follow the log
-docker compose down            # stop; settings and logins are kept
+mkdir -p config
+sudo chown 65532:65532 config   # Linux only, see "Your data" below
+docker compose up -d
 ```
 
-Then open http://localhost:4848.
+and open http://localhost:4848. Docker Desktop on Windows and macOS needs no
+`chown`.
 
-**Pull the published image instead of building it.** Images for `linux/amd64`
-and `linux/arm64` are published to GitHub's container registry as
-`ghcr.io/this-will-be-your-username/pruneplex`, tagged `latest` (newest stable
-release) and a version such as `1.2.0`, `1.2` or `1`. With no clone needed, save
-this as `compose.yaml` and run
-`docker compose up -d`:
+**The template.** This is the current [`compose.yaml`](compose.yaml) from this
+repository, copied here verbatim (CI fails if the two ever differ):
 
+<!-- compose:start -->
 ```yaml
+# PrunePlex, tuned to stay small: it is idle almost all of the time, so the limits
+# below only stop a rare busy moment (a big scan) from growing into a problem.
+#
+#   docker compose up -d       start (pulls the image the first time)
+#   docker compose logs -f     follow the log
+#   docker compose down        stop (settings and logins are kept in ./config)
+#
+# Then open http://localhost:4848.
+
 services:
   pruneplex:
     image: ghcr.io/this-will-be-your-username/pruneplex:latest
     container_name: pruneplex
     restart: unless-stopped
+
+    # The container runs as this user. The image's own user is 65532, so ./config
+    # must be writable by it (Linux: sudo chown 65532:65532 ./config), or run as
+    # yourself instead: PRUNEPLEX_UID=$(id -u) PRUNEPLEX_GID=$(id -g) docker compose up -d
+    user: "${PRUNEPLEX_UID:-65532}:${PRUNEPLEX_GID:-65532}"
+
     ports:
-      - "127.0.0.1:4848:4848"   # address:host port:container port
+      # <address on this machine>:<port on this machine>:<port in the container>
+      #
+      # Read from the environment when you run compose; the values after ":-" are
+      # the defaults:
+      #   PRUNEPLEX_BIND_ADDRESS  127.0.0.1 (this machine only)
+      #   PRUNEPLEX_PORT          4848
+      # For example:  PRUNEPLEX_BIND_ADDRESS=0.0.0.0 docker compose up -d
+      #
+      # PrunePlex has no login of its own and can delete media through Radarr,
+      # Sonarr and Lidarr, so it is only reachable from this machine unless you
+      # change the address: 0.0.0.0 means every interface (your LAN), or use one
+      # specific address of this machine. Ideally put it behind a reverse proxy or
+      # firewall.
+      - "${PRUNEPLEX_BIND_ADDRESS:-127.0.0.1}:${PRUNEPLEX_PORT:-4848}:${PRUNEPLEX_PORT:-4848}"
+
     volumes:
-      - config:/config
+      # Everything PrunePlex saves: Plex sign-in, Radarr/Sonarr/Lidarr connections,
+      # manual matches and the ratings cache. These are private (they hold your
+      # Plex token and API keys): back them up, never share or commit them.
+      - ./config:/config
+
     environment:
+      # Memory: a soft target for the Go garbage collector, set a little under the
+      # hard limit below so it collects harder before the container is ever killed.
       GOMEMLIMIT: 100MiB
+      # The port the app listens on inside the container, kept in step with the
+      # published port above so one variable changes both.
+      PRUNEPLEX_PORT: "${PRUNEPLEX_PORT:-4848}"
+      # Plex, Radarr, Sonarr and Lidarr are reached over the network. Inside the
+      # container "localhost" is the container itself, so point Settings at the
+      # other containers by name (same compose network) or at the host's address.
+
+    # --- resource limits ---
+    # Idle, PrunePlex is small. Scanning a large library or loading a huge Lidarr
+    # collection briefly needs more; raise these if it is ever killed
+    # (docker inspect pruneplex --format '{{.State.OOMKilled}}').
     mem_limit: 128m
-    memswap_limit: 128m
-    cpus: 0.5
+    memswap_limit: 128m # no swap: a runaway should be stopped, not slow the host
+    cpus: 0.5           # Go sizes its worker threads to this automatically
     pids_limit: 128
+
+    # --- hardening: it needs none of these privileges ---
     read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-volumes:
-  config:
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # Keep log files from growing without bound.
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "2"
 ```
+<!-- compose:end -->
 
-Or without compose: `docker run -d --name pruneplex -p 127.0.0.1:4848:4848 -v pruneplex-config:/config ghcr.io/this-will-be-your-username/pruneplex:latest`.
-Update with `docker compose pull && docker compose up -d`. The rest of this
-section describes the settings in the repository's own `compose.yaml`, which
-builds the image from source.
+**Your data** lives in `./config` beside the compose file: the Plex sign-in,
+Radarr/Sonarr/Lidarr connections, manual matches and the ratings cache. It holds
+your Plex token and API keys, so back it up but never share or commit it (the
+repository's `config/` folder ignores everything inside it). The container runs as
+an unprivileged user (uid 65532), so on Linux the folder must be writable by it:
+either `sudo chown 65532:65532 config`, or run the container as yourself with
+`PRUNEPLEX_UID=$(id -u) PRUNEPLEX_GID=$(id -g) docker compose up -d`.
 
-**Resource use.** [`compose.yaml`](compose.yaml) is tuned to stay small: 128 MB
-of memory (no swap) with `GOMEMLIMIT=100MiB` so Go's garbage collector works
-harder before the limit is ever reached, 0.5 CPU (Go sizes its threads to the
-limit automatically), a process cap, and a trimmed log size. PrunePlex is idle
-almost all the time, so these only cap rare busy moments such as scanning a large
-library. If the container is ever killed for memory
+**Resource use.** The template is tuned to stay small: 128 MB of memory (no swap)
+with `GOMEMLIMIT=100MiB` so Go's garbage collector works harder before the limit
+is ever reached, 0.5 CPU (Go sizes its threads to the limit automatically), a
+process cap, and a trimmed log size. PrunePlex is idle almost all the time, so
+these only cap rare busy moments such as scanning a large library. If the
+container is ever killed for memory
 (`docker inspect pruneplex --format '{{.State.OOMKilled}}'` says `true`), raise
-`mem_limit` and `GOMEMLIMIT` together. The image also runs read-only, as an
-unprivileged user, with every Linux capability dropped.
-
-**Your data** lives in the `config` volume (`/config` in the container): the Plex
-sign-in, Radarr/Sonarr/Lidarr connections, manual matches and the ratings cache.
-To use a folder instead of the named volume, change it to `./config:/config` and
-run `sudo chown 65532:65532 ./config` once, since the container runs as that user.
+`mem_limit` and `GOMEMLIMIT` together. It also runs read-only, as an unprivileged
+user, with every Linux capability dropped.
 
 **Networking.** Inside the container `localhost` means the container itself. In
 **Settings**, point Radarr, Sonarr and Lidarr at their container names (if they
 share a compose network with PrunePlex) or at the host's address; do the same for
 a Plex server running outside Docker.
 
-**Access.** PrunePlex has no login of its own, so the compose file publishes it
-on `127.0.0.1` only. The address and the port are two separate environment
-variables, read when you run compose (the defaults are written into the `ports:`
-line of `compose.yaml`, so you can also edit them there):
+**Access.** PrunePlex has no login of its own, so the template publishes it on
+`127.0.0.1` only. The address and the port are two separate environment
+variables, read when you run compose (their defaults are written into the
+`ports:` line, so you can also edit them there):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PRUNEPLEX_BIND_ADDRESS` | `127.0.0.1` | The address on the host the port is published on. `0.0.0.0` makes it reachable from your network; or use one specific address of the host. |
 | `PRUNEPLEX_PORT` | `4848` | The port, on the host and inside the container. |
+| `PRUNEPLEX_UID` / `PRUNEPLEX_GID` | `65532` | The user the container runs as (see "Your data"). |
 
 ```sh
 PRUNEPLEX_BIND_ADDRESS=0.0.0.0 PRUNEPLEX_PORT=9000 docker compose up -d
@@ -395,7 +454,14 @@ Set them on every `docker compose up` (or edit the defaults in `compose.yaml`),
 since a later `up` without them goes back to the defaults. If you do expose it,
 put it behind a reverse proxy or firewall.
 
-**Updating.** `git pull && docker compose up -d --build`.
+**Updating.** `docker compose pull && docker compose up -d`.
+
+**Building from source** instead of pulling the published image (from a clone of
+this repository):
+
+```sh
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
+```
 
 ## Tests
 
