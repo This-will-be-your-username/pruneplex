@@ -133,13 +133,12 @@ jobs:
           # Tags like v1.0.0-rc1 are published as pre-releases.
           case "$TAG" in *-*) flags="--prerelease" ;; esac
           gh release create "$TAG" dist/* --repo "$REPO" --title "$TAG" --generate-notes $flags
-
-  # Publishes the container image to GitHub's container registry (ghcr.io) once
-  # the Docker smoke test has passed: "edge" for every push to main, and the
-  # version (1.2.0, 1.2, 1, plus "latest" for stable releases) for v* tags.
+  # Publishes the container image to GitHub's container registry (ghcr.io) when a
+  # v* tag is pushed and the Docker smoke test has passed. Only version numbers are
+  # published (1.2.0, 1.2, 1, plus "latest" for stable releases): no rolling tags.
   # Built for amd64 and arm64; the Dockerfile cross-compiles, so no emulation.
   publish-image:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
+    if: github.ref_type == 'tag'
     needs: docker
     runs-on: ubuntu-latest
     permissions:
@@ -161,7 +160,6 @@ jobs:
           images: ${{ env.IMAGE }}
           flavor: latest=false
           tags: |
-            type=edge,branch=main
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}},enable=${{ !contains(github.ref_name, '-') }}

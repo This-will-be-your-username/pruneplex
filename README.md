@@ -321,8 +321,8 @@ Then open http://localhost:4848.
 **Pull the published image instead of building it.** Images for `linux/amd64`
 and `linux/arm64` are published to GitHub's container registry as
 `ghcr.io/this-will-be-your-username/pruneplex`, tagged `latest` (newest stable
-release), a version such as `1.2.0`, `1.2` or `1`, and `edge` (the latest build of
-`main`). With no clone needed, save this as `compose.yaml` and run
+release) and a version such as `1.2.0`, `1.2` or `1`. With no clone needed, save
+this as `compose.yaml` and run
 `docker compose up -d`:
 
 ```yaml
