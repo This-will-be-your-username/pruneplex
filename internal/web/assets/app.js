@@ -391,7 +391,8 @@ function applySearch() {
 /** Enable only the letters that have a visible row in the current tab. */
 function refreshAlphabet() {
   if (!alphaIndex) return;
-  alphaIndex.hidden = !results || results.hidden;
+  // The A-Z strip only makes sense while the rows are in title order.
+  alphaIndex.hidden = !results || results.hidden || sortState.key !== 'title';
   const rows = visibleRows(activeTabName());
   const present = new Set(rows.map((row) => row.dataset.letter));
   for (const button of alphaIndex.querySelectorAll('button')) {
@@ -425,6 +426,219 @@ searchInput?.addEventListener('keydown', (event) => {
     searchInput.value = '';
     applySearch();
   }
+});
+
+// --- Sorting ---
+
+/** "12 Mar 2024" for a Unix timestamp in seconds. */
+function formatAdded(seconds) {
+  return new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/**
+ * When a movie arrived on the server, and where that date comes from. Plex's own
+ * date is the file's timestamp, which Radarr and Sonarr can rewrite to the release
+ * date ("Change File Date"), so the date they record for importing it is preferred;
+ * with copies in both a 4K and an HD instance, the earlier one is when it first
+ * arrived. Plex's date is the fallback. Returns null when nothing is known.
+ */
+function addedInfo(movie) {
+  const imported = [movie?.radarr4k?.addedAt, movie?.radarrHd?.addedAt].filter((v) => v > 0);
+  if (imported.length) return { seconds: Math.min(...imported), source: isTV ? 'Sonarr' : 'Radarr' };
+  // Plex's date is the file's timestamp. Exactly midnight UTC is how Radarr stamps a
+  // release date onto a file (a real time is almost never on the exact second), so
+  // that is not when it arrived and is not trusted.
+  if (movie?.addedAt > 0 && !looksLikeReleaseDate(movie.addedAt)) return { seconds: movie.addedAt, source: 'Plex' };
+  return null;
+}
+
+/** True for a timestamp on exactly midnight UTC, the signature of a release date written onto a file. */
+function looksLikeReleaseDate(seconds) {
+  return seconds > 0 && seconds % 86400 === 0;
+}
+
+const ADDED_SOURCE_LABEL = {
+  Radarr: 'Imported into Radarr',
+  Sonarr: 'Added to Sonarr',
+  Plex: 'Added to Plex (file date)',
+};
+
+/** Fill the Added cell: the date, with its exact time and source on hover. */
+function fillAddedCell(cell, movie) {
+  const info = addedInfo(movie);
+  cell.classList.toggle('is-empty', !info);
+  if (!info) {
+    cell.textContent = '—';
+    if (movie?.addedAt > 0) {
+      cell.title = 'Plex reports the release date here, not when it was added (Radarr rewrites file dates). Match this movie to Radarr or Sonarr to see when it was imported.';
+    } else {
+      cell.removeAttribute('title');
+    }
+    return;
+  }
+  cell.textContent = formatAdded(info.seconds);
+  cell.title = `${ADDED_SOURCE_LABEL[info.source]}: ${new Date(info.seconds * 1000).toLocaleString()}`;
+}
+
+/**
+ * Average score (0-100) of a movie's ratings of one type. Ratings under 10 are on
+ * a 0-10 scale. Personal "user" ratings are never counted. null if there are none.
+ */
+function scoreFor(movie, type) {
+  const values = (Array.isArray(movie?.ratings) ? movie.ratings : [])
+    .filter((r) => r && r.type === type && typeof r.value === 'number' && r.value > 0)
+    .map((r) => (r.value <= 10 ? r.value * 10 : r.value));
+  return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+}
+const criticScore = (movie) => scoreFor(movie, 'critic');
+const audienceScore = (movie) => scoreFor(movie, 'audience');
+
+/** Average of the critic and audience scores, or just the one there is. */
+function compositeOfTwo(movie) {
+  const parts = [criticScore(movie), audienceScore(movie)].filter((v) => v !== null);
+  return parts.length ? parts.reduce((sum, v) => sum + v, 0) / parts.length : null;
+}
+
+/** The value a movie is ordered by, or null when it has none (those sort last). */
+function sortValue(movie, state) {
+  switch (state.key) {
+    case 'title': return String(movie.title || '').toLowerCase();
+    case 'added': return addedInfo(movie)?.seconds ?? null;
+    case 'size4k': return movie.radarr4k?.sizeBytes > 0 ? movie.radarr4k.sizeBytes : null;
+    case 'sizeHd': return movie.radarrHd?.sizeBytes > 0 ? movie.radarrHd.sizeBytes : null;
+    case 'ratings':
+      if (state.mode === 'critic') return criticScore(movie);
+      if (state.mode === 'audience') return audienceScore(movie);
+      return compositeOfTwo(movie);
+    default: return null;
+  }
+}
+
+function tieBreak(a, b) {
+  const ta = String(a.title || '').toLowerCase();
+  const tb = String(b.title || '').toLowerCase();
+  if (ta !== tb) return ta < tb ? -1 : 1;
+  return (a.year || 0) - (b.year || 0);
+}
+
+/** Order two movies by `state` ({key, dir, mode}). Movies with no value always go last. */
+function compareMovies(a, b, state) {
+  const va = sortValue(a, state);
+  const vb = sortValue(b, state);
+  if (va === null || vb === null) {
+    return va === vb ? tieBreak(a, b) : (va === null ? 1 : -1);
+  }
+  let result = va < vb ? -1 : va > vb ? 1 : 0;
+  if (state.dir === 'desc') result = -result;
+  return result || tieBreak(a, b);
+}
+
+function sortMovies(movies, state) {
+  return [...movies].sort((a, b) => compareMovies(a, b, state));
+}
+
+const SORT_KEYS = ['title', 'added', 'size4k', 'sizeHd', 'ratings'];
+const RATING_MODES = ['critic', 'audience', 'composite'];
+// The direction a column starts in when first clicked: A-Z for text, newest or largest first otherwise.
+const SORT_DEFAULT_DIR = { title: 'asc', added: 'desc', size4k: 'desc', sizeHd: 'desc' };
+const SORT_STORAGE_KEY = `pruneplex.sort.${isTV ? 'tv' : 'movies'}`;
+
+// Each table row's movie, so rows can be reordered without being rebuilt.
+const rowMovies = new WeakMap();
+
+function loadSort() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SORT_STORAGE_KEY) || 'null');
+    if (saved && SORT_KEYS.includes(saved.key) && ['asc', 'desc'].includes(saved.dir)) {
+      if (saved.key !== 'ratings') return { key: saved.key, dir: saved.dir, mode: null };
+      if (RATING_MODES.includes(saved.mode)) return { key: 'ratings', dir: saved.dir, mode: saved.mode };
+    }
+  } catch {
+    // No stored choice (or no storage available): use the default.
+  }
+  return { key: 'title', dir: 'asc', mode: null };
+}
+
+let sortState = loadSort();
+
+function setSort(next) {
+  sortState = next;
+  try { localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(next)); } catch { /* not remembered */ }
+  applySort();
+}
+
+/** Reorder the rows of every tab by the current sort. Rows are moved, not rebuilt, so filters and search keep working. */
+function applySort() {
+  for (const selector of Object.values(RESULT_BODIES)) {
+    const body = doc?.querySelector(selector);
+    if (!body) continue;
+    const pairs = Array.from(body.rows).map((row) => ({ row, movie: rowMovies.get(row) }));
+    pairs.sort((x, y) => (x.movie && y.movie ? compareMovies(x.movie, y.movie, sortState) : 0));
+    const fragment = document.createDocumentFragment();
+    for (const { row } of pairs) fragment.append(row);
+    body.append(fragment);
+  }
+  updateSortIndicators();
+  refreshAlphabet();
+}
+
+/** Re-sort only when the current order depends on something that just changed. */
+function resortIf(...keys) {
+  if (keys.includes(sortState.key)) applySort();
+}
+
+function updateSortIndicators() {
+  const arrow = sortState.dir === 'asc' ? '▲' : '▼';
+  for (const button of doc?.querySelectorAll('.sort-button') ?? []) {
+    const key = button.dataset.sort || button.dataset.sortMenu;
+    const active = key === sortState.key;
+    button.classList.toggle('is-active', active);
+    button.closest('th')?.setAttribute('aria-sort', active ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+    const arrowEl = button.querySelector('.sort-arrow');
+    if (arrowEl) arrowEl.textContent = active ? arrow : '';
+    const modeEl = button.querySelector('.sort-mode');
+    if (modeEl) modeEl.textContent = active && sortState.mode ? `(${sortState.mode})` : '';
+  }
+  for (const item of doc?.querySelectorAll('.sort-menu [data-sort]') ?? []) {
+    const active = sortState.key === 'ratings' && item.dataset.mode === sortState.mode && item.dataset.dir === sortState.dir;
+    item.classList.toggle('is-active', active);
+    item.setAttribute('aria-checked', String(active));
+  }
+}
+
+function closeSortMenus() {
+  for (const menu of doc?.querySelectorAll('.sort-menu') ?? []) menu.hidden = true;
+  for (const toggle of doc?.querySelectorAll('[data-sort-menu]') ?? []) toggle.setAttribute('aria-expanded', 'false');
+}
+
+// One handler for every table's header: plain columns toggle their direction, the
+// Ratings column opens a menu of the six rating orders.
+results?.addEventListener?.('click', (event) => {
+  const toggle = event.target.closest?.('[data-sort-menu]');
+  if (toggle) {
+    const menu = toggle.parentElement.querySelector('.sort-menu');
+    const opening = menu.hidden;
+    closeSortMenus();
+    menu.hidden = !opening;
+    toggle.setAttribute('aria-expanded', String(opening));
+    return;
+  }
+  const choice = event.target.closest?.('[data-sort]');
+  if (!choice) return;
+  closeSortMenus();
+  const key = choice.dataset.sort;
+  if (choice.dataset.dir) {
+    setSort({ key, dir: choice.dataset.dir, mode: choice.dataset.mode || null });
+    return;
+  }
+  const dir = sortState.key === key ? (sortState.dir === 'asc' ? 'desc' : 'asc') : SORT_DEFAULT_DIR[key];
+  setSort({ key, dir, mode: null });
+});
+doc?.addEventListener?.('click', (event) => {
+  if (!event.target.closest?.('.sort-menu-wrap')) closeSortMenus();
+});
+doc?.addEventListener?.('keydown', (event) => {
+  if (event.key === 'Escape') closeSortMenus();
 });
 
 // --- Filter UI ---
@@ -562,6 +776,7 @@ function renderResults(analysis) {
   setText('#count-multi', analysis.matches.length);
   if (results) results.hidden = false;
   if (filterContainer) filterContainer.hidden = false;
+  applySort(); // keep the chosen order for the fresh rows
   applySearch(); // keep any search text applied to the fresh rows
   startRatingsLookup(analysis);
 }
@@ -662,7 +877,13 @@ function buildRow(movie, index, qualities) {
       resolutionList.append(tag);
     }
     resolutionCell.append(resolutionList);
-    row.append(titleCell, ratingsCell, resolutionCell);
+
+    // When the movie arrived on the server, right after the title.
+    const addedCell = document.createElement('td');
+    addedCell.className = 'added-cell';
+    fillAddedCell(addedCell, movie);
+    rowMovies.set(row, movie);
+    row.append(titleCell, addedCell, ratingsCell, resolutionCell);
     row.dataset.columns = qualities.join(',');
     for (const quality of qualities) row.append(createRadarrCell(movie, quality, qualities));
     return row;
@@ -800,12 +1021,18 @@ async function pollRatings(run, byKey, pendingKeys) {
     return;
   }
   const stillPending = [];
+  let changed = false;
   for (const [key, result] of Object.entries(data.ratings || {})) {
     for (const movie of byKey.get(key) || []) {
-      if (mergeExtraRatings(movie, result.ratings)) refreshRatingsCell(movie);
+      if (mergeExtraRatings(movie, result.ratings)) {
+        refreshRatingsCell(movie);
+        changed = true;
+      }
     }
     if (!result.complete) stillPending.push(key);
   }
+  // New ratings can change where movies belong when sorting by rating.
+  if (changed) resortIf('ratings');
   const problems = Object.values(data.errors || {});
   if (problems.length) {
     setRatingsStatus(problems.join(' · '));
@@ -1042,6 +1269,9 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
           const key = is4KInstance ? 'fourKSize' : 'hdSize';
           if (size > 0) row.dataset[key] = String(size); else delete row.dataset[key];
           if (isTV) row.querySelector('.show-status')?.replaceWith(createStatusIcon(movie));
+          const addedCell = row.querySelector('.added-cell');
+          if (addedCell) fillAddedCell(addedCell, movie); // the arrival date may come from the match
+          resortIf('size4k', 'sizeHd', 'added');
         }
       } catch (error) {
         unlinkButton.disabled = false;
@@ -1080,11 +1310,12 @@ function createRadarrCell(movie, quality, columns = ['4k', 'hd']) {
       loadStorage(); // freed space shows up in the header
       ring?.remove();
       button.textContent = 'Removed';
-      if (is4KInstance) {
-        match.sizeBytes = 0;
-        matchSize.dataset.sizeBytes = '0';
-        matchSizeText.textContent = 'Removed';
-      }
+      // The copy is gone from disk, so it no longer has a size (this also keeps
+      // size sorting honest for both the 4K and HD columns).
+      match.sizeBytes = 0;
+      matchSize.dataset.sizeBytes = '0';
+      matchSizeText.textContent = 'Removed';
+      resortIf('size4k', 'sizeHd');
     } catch (error) {
       button.disabled = false;
       button.textContent = `Delete ${is4KInstance ? '4K' : 'HD'}`;
@@ -1274,6 +1505,9 @@ function buildMatchPicker(picker, movie) {
         if (fourK > 0) row.dataset.fourKSize = String(fourK);
         if (hd > 0) row.dataset.hdSize = String(hd);
       }
+      const addedCell = row?.querySelector('.added-cell');
+      if (addedCell) fillAddedCell(addedCell, movie); // a new match can change the arrival date
+      resortIf('size4k', 'sizeHd', 'added');
     } catch (error) {
       button.disabled = false;
       status.textContent = error.message;
@@ -1529,6 +1763,14 @@ if (typeof module !== 'undefined' && module.exports) {
     compositeRating,
     letterFor,
     ratingUrl,
+    criticScore,
+    audienceScore,
+    compositeOfTwo,
+    compareMovies,
+    sortMovies,
+    formatAdded,
+    addedInfo,
+    looksLikeReleaseDate,
   };
 }
 

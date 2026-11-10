@@ -2,6 +2,6 @@
   "name": "pruneplex",
   "private": true,
   "scripts": {
-    "test": "node test/highlight.test.js && node test/dom_highlight.test.js && node test/render_movie.test.js && node test/search_index.test.js && node test/ratings_links.test.js"
+    "test": "node test/highlight.test.js && node test/dom_highlight.test.js && node test/render_movie.test.js && node test/search_index.test.js && node test/ratings_links.test.js && node test/sorting.test.js"
   }
 }

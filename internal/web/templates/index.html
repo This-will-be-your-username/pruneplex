@@ -93,7 +93,7 @@
               </div>
               <div class="table-scroll">
                 <table>
-                  <thead><tr><th scope="col">{{.Singular}}</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">4K {{.Arr}}</th><th scope="col">HD {{.Arr}}</th></tr></thead>
+<thead><tr>{{template "thTitle" .}}{{template "thAdded" .}}{{template "thRatings" .}}<th scope="col">Resolutions</th>{{template "th4k" .}}{{template "thHd" .}}</tr></thead>
                   <tbody id="plex-results-body"></tbody>
                 </table>
               </div>
@@ -107,7 +107,7 @@
               </div>
               <div class="table-scroll" id="only4k-table">
                 <table>
-                  <thead><tr><th scope="col">{{.Singular}}</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">4K {{.Arr}}</th></tr></thead>
+<thead><tr>{{template "thTitle" .}}{{template "thAdded" .}}{{template "thRatings" .}}<th scope="col">Resolutions</th>{{template "th4k" .}}</tr></thead>
                   <tbody id="only4k-body"></tbody>
                 </table>
               </div>
@@ -121,7 +121,7 @@
               </div>
               <div class="table-scroll" id="onlyhd-table">
                 <table>
-                  <thead><tr><th scope="col">{{.Singular}}</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">HD {{.Arr}}</th></tr></thead>
+<thead><tr>{{template "thTitle" .}}{{template "thAdded" .}}{{template "thRatings" .}}<th scope="col">Resolutions</th>{{template "thHd" .}}</tr></thead>
                   <tbody id="onlyhd-body"></tbody>
                 </table>
               </div>
@@ -135,7 +135,7 @@
               </div>
               <div class="table-scroll" id="other-table">
                 <table>
-                  <thead><tr><th scope="col">{{.Singular}}</th><th scope="col">Ratings</th><th scope="col">Resolutions</th><th scope="col">4K {{.Arr}}</th><th scope="col">HD {{.Arr}}</th></tr></thead>
+<thead><tr>{{template "thTitle" .}}{{template "thAdded" .}}{{template "thRatings" .}}<th scope="col">Resolutions</th>{{template "th4k" .}}{{template "thHd" .}}</tr></thead>
                   <tbody id="other-body"></tbody>
                 </table>
               </div>
@@ -150,3 +150,16 @@
     <script src="/assets/app.js" defer></script>
   </body>
 </html>
+
+{{define "thTitle"}}<th scope="col" aria-sort="none"><button class="sort-button" type="button" data-sort="title" title="Sort by title: click for A to Z, again for Z to A">{{.Singular}} <span class="sort-arrow" aria-hidden="true"></span></button></th>{{end}}
+{{define "thAdded"}}<th scope="col" aria-sort="none"><button class="sort-button" type="button" data-sort="added" title="Sort by date added to Plex: click for newest first, again for oldest first">Added <span class="sort-arrow" aria-hidden="true"></span></button></th>{{end}}
+{{define "th4k"}}<th scope="col" aria-sort="none"><button class="sort-button" type="button" data-sort="size4k" title="Sort by 4K file size: click for largest first, again for smallest first">4K {{.Arr}} <span class="sort-arrow" aria-hidden="true"></span></button></th>{{end}}
+{{define "thHd"}}<th scope="col" aria-sort="none"><button class="sort-button" type="button" data-sort="sizeHd" title="Sort by HD file size: click for largest first, again for smallest first">HD {{.Arr}} <span class="sort-arrow" aria-hidden="true"></span></button></th>{{end}}
+{{define "thRatings"}}<th scope="col" aria-sort="none"><div class="sort-menu-wrap"><button class="sort-button" type="button" data-sort-menu="ratings" aria-haspopup="menu" aria-expanded="false" title="Choose how to sort by rating">Ratings <span class="sort-mode"></span> <span class="sort-arrow" aria-hidden="true"></span></button><ul class="sort-menu" role="menu" hidden>
+  <li role="none"><button type="button" role="menuitemradio" aria-checked="false" data-sort="ratings" data-mode="critic" data-dir="desc">Critic: high to low</button></li>
+  <li role="none"><button type="button" role="menuitemradio" aria-checked="false" data-sort="ratings" data-mode="critic" data-dir="asc">Critic: low to high</button></li>
+  <li role="none"><button type="button" role="menuitemradio" aria-checked="false" data-sort="ratings" data-mode="audience" data-dir="desc">Audience: high to low</button></li>
+  <li role="none"><button type="button" role="menuitemradio" aria-checked="false" data-sort="ratings" data-mode="audience" data-dir="asc">Audience: low to high</button></li>
+  <li role="none"><button type="button" role="menuitemradio" aria-checked="false" data-sort="ratings" data-mode="composite" data-dir="desc">Composite: high to low</button></li>
+  <li role="none"><button type="button" role="menuitemradio" aria-checked="false" data-sort="ratings" data-mode="composite" data-dir="asc">Composite: low to high</button></li>
+</ul></div></th>{{end}}
