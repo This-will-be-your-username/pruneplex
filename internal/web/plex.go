@@ -492,7 +492,7 @@ func (c *plexConnector) movieResponse(ctx context.Context, result plex.Analysis)
 		if !ok {
 			return nil
 		}
-		return &radarrMovieMatch{ID: found.ID, Title: found.Title, Year: found.Year, SizeBytes: found.SizeOnDisk, Manual: manualMatch}
+		return &radarrMovieMatch{ID: found.ID, Title: found.Title, Year: found.Year, SizeBytes: found.SizeOnDisk, Manual: manualMatch, AddedAt: found.ImportedAt()}
 	}
 	enrich := func(movies []plex.Movie) []analyzedMovie {
 		out := make([]analyzedMovie, 0, len(movies))
@@ -646,6 +646,9 @@ type radarrMovieMatch struct {
 	// Sonarr only: episodes on disk out of the monitored, aired episodes.
 	EpisodeFiles int `json:"episodeFiles,omitempty"`
 	EpisodeCount int `json:"episodeCount,omitempty"`
+	// AddedAt is when this copy arrived on the server (Unix seconds): the file's
+	// import into Radarr, or the series' addition to Sonarr. 0 if unknown.
+	AddedAt int64 `json:"addedAt,omitempty"`
 }
 
 func listRadarrMovies(ctx context.Context, instance radarr.Instance) ([]radarr.Movie, error) {

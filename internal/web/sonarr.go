@@ -272,7 +272,7 @@ func (c *plexConnector) showResponse(ctx context.Context, result plex.ShowAnalys
 		if !ok {
 			return nil
 		}
-		return &radarrMovieMatch{ID: series.ID, Title: series.Title, Year: series.Year, SizeBytes: series.SizeOnDisk(), Status: series.Status, EpisodeFiles: series.Statistics.EpisodeFileCount, EpisodeCount: series.Statistics.EpisodeCount, Manual: manualMatch}
+		return &radarrMovieMatch{ID: series.ID, Title: series.Title, Year: series.Year, SizeBytes: series.SizeOnDisk(), Status: series.Status, EpisodeFiles: series.Statistics.EpisodeFileCount, EpisodeCount: series.Statistics.EpisodeCount, Manual: manualMatch, AddedAt: series.AddedAt()}
 	}
 	enrich := func(shows []plex.Show) []analyzedShow {
 		out := make([]analyzedShow, 0, len(shows))

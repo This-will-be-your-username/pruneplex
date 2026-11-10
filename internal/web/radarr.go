@@ -322,10 +322,11 @@ type radarrMovieCopy struct {
 	Manual    bool   `json:"manual,omitempty"`
 	EpisodeFiles int `json:"episodeFiles,omitempty"`
 	EpisodeCount int `json:"episodeCount,omitempty"`
+	AddedAt      int64 `json:"addedAt,omitempty"`
 }
 
 func newRadarrMovieCopy(m radarr.Movie) *radarrMovieCopy {
-	return &radarrMovieCopy{ID: m.ID, Title: m.Title, Year: m.Year, SizeBytes: m.SizeOnDisk}
+	return &radarrMovieCopy{ID: m.ID, Title: m.Title, Year: m.Year, SizeBytes: m.SizeOnDisk, AddedAt: m.ImportedAt()}
 }
 
 var radarrQualities = []string{"4k", "hd"}

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Instance struct {
@@ -35,6 +36,13 @@ type Movie struct {
 	IMDBID     string `json:"imdbId"`
 	SizeOnDisk int64  `json:"sizeOnDisk"`
 	RootFolderPath string `json:"rootFolderPath"`
+	// Added is when the movie was added to Radarr. MovieFile.DateAdded is when its
+	// file was imported, which unlike a file's own timestamp is not rewritten by
+	// "Change File Date". Both are RFC 3339 text, empty or year 1 when unknown.
+	Added     string `json:"added"`
+	MovieFile *struct {
+		DateAdded string `json:"dateAdded"`
+	} `json:"movieFile"`
 }
 
 type Identity struct {
@@ -229,4 +237,23 @@ func ChooseRootFolder(folders []RootFolder, configured string, usage map[string]
 		}
 	}
 	return best, true
+}
+
+// ParseTimestamp reads a Radarr or Sonarr date ("2024-05-01T12:30:00Z") as Unix
+// seconds, or 0 when it is empty or the placeholder year 1 they use for "never".
+func ParseTimestamp(text string) int64 {
+	parsed, err := time.Parse(time.RFC3339, text)
+	if err != nil || parsed.Year() < 1971 {
+		return 0
+	}
+	return parsed.Unix()
+}
+
+// ImportedAt is when the movie's file was imported into Radarr (Unix seconds), or
+// 0 if the movie has no file or no date.
+func (m Movie) ImportedAt() int64 {
+	if m.MovieFile == nil {
+		return 0
+	}
+	return ParseTimestamp(m.MovieFile.DateAdded)
 }

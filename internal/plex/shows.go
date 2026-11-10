@@ -29,6 +29,7 @@ type Show struct {
 	TMDBID             int            `json:"tmdbId,omitempty"`
 	IMDBID             string         `json:"imdbId,omitempty"`
 	FourKSizeBytes     int64          `json:"fourKSizeBytes,omitempty"`
+	AddedAt            int64          `json:"addedAt,omitempty"` // when the show was added to Plex (Unix seconds)
 }
 
 type ShowAnalysis struct {
@@ -112,6 +113,7 @@ func (c *Client) AnalyzeShows(ctx context.Context, baseURL, token, libraryKey st
 					Title:   entry.Title,
 					Year:    entry.Year,
 					Thumb:   entry.Thumb,
+					AddedAt: entry.AddedAt,
 					Library: section.Title,
 					Ratings: consolidateRatings(entry.libraryMovie),
 					TVDBID:  tvdbID,

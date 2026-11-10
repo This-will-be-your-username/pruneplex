@@ -63,6 +63,8 @@ type Movie struct {
 	TMDBID         int           `json:"tmdbId,omitempty"`
 	IMDBID         string        `json:"imdbId,omitempty"`
 	FourKSizeBytes int64         `json:"fourKSizeBytes,omitempty"`
+	// AddedAt is when the item was added to Plex (Unix seconds); 0 if unknown.
+	AddedAt int64 `json:"addedAt,omitempty"`
 }
 
 type Analysis struct {
@@ -260,6 +262,7 @@ func (c *Client) AnalyzeMovies(ctx context.Context, baseURL, token, libraryKey s
 					TMDBID:         tmdbID,
 					IMDBID:         imdbID,
 					FourKSizeBytes: extract4KSize(movie.Media),
+					AddedAt:        movie.AddedAt,
 				}
 				switch {
 				case hasMixed4K(resolutions):
@@ -387,6 +390,7 @@ type libraryMovie struct {
 	Ratings             ratingList  `json:"Rating"`
 	Guids               guidList    `json:"Guid"`
 	Media               []mediaItem `json:"Media"`
+	AddedAt             int64       `json:"addedAt"`
 }
 
 func consolidateRatings(m libraryMovie) []MovieRating {

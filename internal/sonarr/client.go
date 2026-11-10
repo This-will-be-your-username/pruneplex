@@ -31,6 +31,8 @@ type Series struct {
 	// Status is "continuing", "ended", "upcoming" or "deleted".
 	Status     string `json:"status"`
 	RootFolderPath string `json:"rootFolderPath"`
+	// Added is when the series was added to Sonarr (RFC 3339 text).
+	Added string `json:"added"`
 	Statistics struct {
 		SizeOnDisk int64 `json:"sizeOnDisk"`
 		// EpisodeFileCount of EpisodeCount (monitored, aired) episodes are on disk.
@@ -194,3 +196,6 @@ func (c *Client) RootFolders(ctx context.Context) ([]RootFolder, error) {
 	}
 	return folders, nil
 }
+
+// AddedAt is when the series was added to Sonarr (Unix seconds), or 0 if unknown.
+func (s Series) AddedAt() int64 { return radarr.ParseTimestamp(s.Added) }

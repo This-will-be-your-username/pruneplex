@@ -23,7 +23,7 @@ type sonarrCandidate struct {
 }
 
 func newSonarrCopy(s sonarr.Series) *radarrMovieCopy {
-	return &radarrMovieCopy{ID: s.ID, Title: s.Title, Year: s.Year, SizeBytes: s.SizeOnDisk(), Status: s.Status, EpisodeFiles: s.Statistics.EpisodeFileCount, EpisodeCount: s.Statistics.EpisodeCount}
+	return &radarrMovieCopy{ID: s.ID, Title: s.Title, Year: s.Year, SizeBytes: s.SizeOnDisk(), Status: s.Status, EpisodeFiles: s.Statistics.EpisodeFileCount, EpisodeCount: s.Statistics.EpisodeCount, AddedAt: s.AddedAt()}
 }
 
 // sonarrIdentityKey identifies a series across Sonarr instances: TVDB ID, else
